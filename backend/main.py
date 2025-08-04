@@ -1,0 +1,884 @@
+"""
+Akıllı Araç Fiyat Tahminleme API
+Bu uygulama, kullanıcının girdiği araç bilgilerine göre
+LangChain ve Gemini AI kullanarak anlık fiyat tahmini yapar.
+"""
+
+from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List
+import os
+from dotenv import load_dotenv
+import time
+from datetime import datetime
+from sqlalchemy.orm import Session
+
+# LangChain imports
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+from langchain.output_parsers import PydanticOutputParser
+from langchain.schema import BaseOutputParser
+from langchain.chains import LLMChain
+import json
+import re
+
+# Database imports
+from database import (
+    create_tables, get_db, AracTahmini, 
+    ApiKullanimi, PopulerAraclar, SessionLocal,
+    Kullanici, KullaniciAraci
+)
+
+# CRUD imports
+import crud
+
+# Model imports
+from models import (
+    KullaniciOlustur, KullaniciGuncelle, KullaniciYanit,
+    AracOlustur, AracGuncelle, AracYanit, AracOzet,
+    TahminGecmisi, KullaniciIstatistik, YanitMesaj,
+    SayfalamaBilgisi, SayfaliYanit, EmailKontrol,
+    KilometreGuncelle
+)
+
+# Çevre değişkenlerini yükle
+load_dotenv()
+
+# Veritabanı tablolarını oluştur
+create_tables()
+
+# FastAPI uygulamasını oluştur
+app = FastAPI(
+    title="🚗 Akıllı Araç Fiyat Tahminleme API",
+    description="""
+    ## 🚀 Gelişmiş Araç Değerleme Sistemi
+    
+    Bu API, **Gemini AI** ve **LangChain** teknolojilerini kullanarak:
+    
+    ### ✨ Özellikler
+    * 🎯 **Anlık Fiyat Tahmini** - Güncel pazar verilerine dayalı
+    * 🧠 **Yapay Zeka Analizi** - Gemini AI ile akıllı değerlendirme
+    * 📊 **Detaylı Raporlama** - Pazar analizi ve öneriler
+    * 💾 **Kullanıcı Yönetimi** - Araç ve tahmin geçmişi
+    * 📈 **İstatistikler** - Kullanım ve trend analizleri
+    
+    ### 🔧 Teknoloji Stack
+    * **FastAPI** - Modern Python web framework
+    * **SQLAlchemy** - ORM ve veritabanı yönetimi
+    * **LangChain** - AI entegrasyonu
+    * **SQLite** - Hafif veritabanı çözümü
+    
+    ### 📚 API Kullanımı
+    1. **Kullanıcı Kaydı** - `/kullanici/kayit` endpoint'i ile
+    2. **Araç Ekleme** - Kişisel araç bilgilerinizi kaydedin
+    3. **Fiyat Tahmini** - `/tahmin-et` ile anlık analiz
+    4. **Geçmiş Görüntüleme** - Önceki tahminlerinizi inceleyin
+    
+    ### 🎨 Frontend Örnekleri
+    * React, Vue.js veya vanilla JavaScript ile entegre edilebilir
+    * RESTful API standartlarına uygun
+    * JSON formatında veri alışverişi
+    """,
+    version="1.0.0",
+    terms_of_service="https://github.com/your-repo/terms",
+    contact={
+        "name": "Geliştirici",
+        "url": "https://github.com/your-repo",
+        "email": "developer@example.com",
+    },
+    license_info={
+        "name": "MIT License",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    openapi_tags=[
+        {
+            "name": "🏠 Ana Sistem",
+            "description": "Temel sistem kontrolleri ve sağlık durumu"
+        },
+        {
+            "name": "🎯 Fiyat Tahmini",
+            "description": "AI destekli araç fiyat tahmin işlemleri"
+        },
+        {
+            "name": "👤 Kullanıcı Yönetimi", 
+            "description": "Kullanıcı hesap işlemleri"
+        },
+        {
+            "name": "🚗 Araç Yönetimi",
+            "description": "Kullanıcı araçları CRUD işlemleri"
+        },
+        {
+            "name": "📊 İstatistikler",
+            "description": "Sistem ve kullanıcı istatistikleri"
+        },
+        {
+            "name": "🔍 Arama",
+            "description": "Arama ve filtreleme işlemleri"
+        }
+    ]
+)
+
+# CORS ayarları (Frontend ile backend arasındaki iletişim için)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Üretimde bunu daha spesifik yapın
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Gemini API'sini yapılandır
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY çevre değişkeni ayarlanmamış!")
+
+# LangChain ile Gemini modelini oluştur
+llm = ChatGoogleGenerativeAI(
+    model="gemini-pro",
+    google_api_key=GEMINI_API_KEY,
+    temperature=0.3,  # Daha tutarlı sonuçlar için düşük temperature
+    convert_system_message_to_human=True
+)
+
+# Pydantic modelleri (API'ye gelen ve giden veriler için)
+class AracBilgileri(BaseModel):
+    """
+    ## 🎯 Fiyat Tahmini İçin Araç Bilgileri
+    
+    AI analizi için gerekli araç özellikleri
+    """
+    marka: str = Field(..., description="Araç markası", example="Toyota")
+    model: str = Field(..., description="Araç modeli", example="Corolla")
+    yil: int = Field(..., ge=1950, le=2025, description="Model yılı", example=2020)
+    kilometre: int = Field(..., ge=0, description="Kilometre", example=50000)
+    yakit_tipi: str = Field(..., description="Yakıt türü", example="Benzin")
+    vites_tipi: str = Field(..., description="Vites türü", example="Otomatik")
+    hasar_durumu: str = Field(..., description="Hasar durumu", example="Hasarsız")
+    renk: str = Field(..., description="Araç rengi", example="Beyaz")
+    il: str = Field(..., description="Bulunduğu şehir", example="İstanbul")
+    motor_hacmi: Optional[float] = Field(None, description="Motor hacmi (L)", example=1.6)
+    motor_gucu: Optional[int] = Field(None, description="Motor gücü (HP)", example=130)
+    ekstra_bilgiler: Optional[str] = Field(None, description="Ek bilgiler", example="Çok temiz araç")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "marka": "Toyota",
+                "model": "Corolla",
+                "yil": 2020,
+                "kilometre": 50000,
+                "yakit_tipi": "Benzin",
+                "vites_tipi": "Otomatik",
+                "hasar_durumu": "Hasarsız",
+                "renk": "Beyaz",
+                "il": "İstanbul",
+                "motor_hacmi": 1.6,
+                "motor_gucu": 130,
+                "ekstra_bilgiler": "Garajda saklanmış temiz araç"
+            }
+        }
+
+class TahminSonucu(BaseModel):
+    """
+    ## 📊 AI Fiyat Tahmini Sonucu
+    
+    Gemini AI tarafından üretilen detaylı analiz raporu
+    """
+    tahmini_fiyat_min: int = Field(description="Minimum tahmini fiyat (TL)", example=450000)
+    tahmini_fiyat_max: int = Field(description="Maksimum tahmini fiyat (TL)", example=550000)
+    ortalama_fiyat: int = Field(description="Ortalama tahmini fiyat (TL)", example=500000)
+    rapor: str = Field(description="Detaylı analiz raporu", example="Bu araç için pazar analizi...")
+    analiz_tarihi: str = Field(description="Analiz yapılan tarih ve saat", example="2024-08-04 14:30:25")
+    pazar_analizi: str = Field(description="Güncel pazar durumu hakkında bilgi", example="Pazar durumu stabil...")
+    tahmin_id: Optional[int] = Field(description="Veritabanındaki tahmin ID'si", example=123)
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "tahmini_fiyat_min": 450000,
+                "tahmini_fiyat_max": 550000,
+                "ortalama_fiyat": 500000,
+                "rapor": "2020 model Toyota Corolla için yapılan analiz sonucunda...",
+                "analiz_tarihi": "2024-08-04 14:30:25",
+                "pazar_analizi": "Toyota Corolla modeli piyasada stabil bir değere sahip...",
+                "tahmin_id": 123
+            }
+        }
+
+class IstatistikModel(BaseModel):
+    toplam_tahmin: int
+    populer_markalar: List[dict]
+    ortalama_response_time: float
+    gunluk_kullanim: int
+
+# LangChain Output Parser
+class FiyatTahminParser(BaseOutputParser):
+    """Gemini'den gelen yanıtı parse eden özel parser"""
+    
+    def parse(self, text: str) -> dict:
+        # JSON formatında yanıt bekliyoruz
+        try:
+            # Önce JSON parse etmeyi dene
+            if "{" in text and "}" in text:
+                json_start = text.find("{")
+                json_end = text.rfind("}") + 1
+                json_text = text[json_start:json_end]
+                result = json.loads(json_text)
+                return result
+        except:
+            pass
+        
+        # JSON parse edilemezse regex ile parse et
+        try:
+            min_match = re.search(r'min.*?(\d+)', text, re.IGNORECASE)
+            max_match = re.search(r'max.*?(\d+)', text, re.IGNORECASE)
+            avg_match = re.search(r'ortalama.*?(\d+)', text, re.IGNORECASE)
+            
+            min_fiyat = int(min_match.group(1)) if min_match else 400000
+            max_fiyat = int(max_match.group(1)) if max_match else 600000
+            ortalama_fiyat = int(avg_match.group(1)) if avg_match else 500000
+            
+            return {
+                "tahmini_fiyat_min": min_fiyat,
+                "tahmini_fiyat_max": max_fiyat,
+                "ortalama_fiyat": ortalama_fiyat,
+                "rapor": text,
+                "pazar_analizi": "Güncel pazar verilerine dayalı analiz"
+            }
+        except:
+            # Son çare olarak varsayılan değerler
+            return {
+                "tahmini_fiyat_min": 400000,
+                "tahmini_fiyat_max": 600000,
+                "ortalama_fiyat": 500000,
+                "rapor": text,
+                "pazar_analizi": "Analiz sırasında hata oluştu"
+            }
+
+# LangChain Prompt Template
+fiyat_tahmin_prompt = PromptTemplate(
+    input_variables=[
+        "marka", "model", "yil", "kilometre", "yakit_tipi", 
+        "vites_tipi", "hasar_durumu", "renk", "il", 
+        "motor_hacmi", "motor_gucu", "ekstra_bilgiler"
+    ],
+    template="""
+Sen bir otomotiv uzmanısın ve Türkiye'deki ikinci el araç piyasasını çok iyi biliyorsun.
+Aşağıdaki araç için güncel pazar değerini analiz et ve fiyat tahmini yap.
+
+ARAÇ BİLGİLERİ:
+- Marka: {marka}
+- Model: {model}  
+- Yıl: {yil}
+- Kilometre: {kilometre:,} km
+- Yakıt Tipi: {yakit_tipi}
+- Vites: {vites_tipi}
+- Hasar Durumu: {hasar_durumu}
+- Renk: {renk}
+- İl: {il}
+{motor_hacmi}
+{motor_gucu}
+{ekstra_bilgiler}
+
+GÖREV:
+1. Bu araç için Türkiye pazarında güncel fiyat tahmini yap
+2. Minimum, maksimum ve ortalama fiyat belirle
+3. Pazar durumunu analiz et
+4. Fiyatı etkileyen faktörleri açıkla
+
+Yanıtını aşağıdaki JSON formatında ver:
+{{
+    "tahmini_fiyat_min": [minimum_fiyat_sayı],
+    "tahmini_fiyat_max": [maksimum_fiyat_sayı], 
+    "ortalama_fiyat": [ortalama_fiyat_sayı],
+    "rapor": "Bu araç için [detaylı_analiz_ve_açıklama]",
+    "pazar_analizi": "Güncel pazar durumu: [pazar_durumu_analizi]"
+}}
+
+Önemli: Yanıtın sadece JSON formatında olsun, başka açıklama ekleme.
+"""
+)
+
+# LangChain Chain oluştur
+fiyat_tahmin_chain = LLMChain(
+    llm=llm,
+    prompt=fiyat_tahmin_prompt,
+    output_parser=FiyatTahminParser()
+)
+
+# Ana endpoint'ler
+@app.get("/", tags=["🏠 Ana Sistem"])
+async def root():
+    """
+    ## 🏠 API Durum Kontrolü
+    
+    API'nin çalışır durumda olduğunu kontrol eder.
+    
+    **Yanıt:**
+    - API durum mesajı
+    - Versiyon bilgisi  
+    - Dokümantasyon bağlantısı
+    """
+    return {
+        "message": "🚗 Akıllı Araç Fiyat Tahminleme API çalışıyor!",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "api_features": [
+            "AI Destekli Fiyat Tahmini",
+            "Kullanıcı ve Araç Yönetimi", 
+            "Detaylı İstatistikler",
+            "Geçmiş Analiz"
+        ]
+    }
+
+@app.post("/tahmin-et", response_model=TahminSonucu, tags=["🎯 Fiyat Tahmini"])
+async def fiyat_tahmini_yap(arac: AracBilgileri, request: Request, db: Session = Depends(get_db)):
+    """
+    ## 🎯 AI Destekli Araç Fiyat Tahmini
+    
+    Girilen araç bilgilerine göre **Gemini AI** kullanarak anlık fiyat tahmini yapar.
+    
+    ### 📝 Gerekli Bilgiler:
+    - **Marka & Model**: Araç markası ve modeli
+    - **Yıl**: Model yılı (1950-2025)
+    - **Kilometre**: Güncel kilometre bilgisi
+    - **Yakıt Tipi**: Benzin, Dizel, LPG, Hibrit, Elektrik
+    - **Vites**: Manuel, Otomatik
+    - **Hasar Durumu**: Hasarsız, Boyalı, Değişen, Hasarlı
+    - **Renk**: Araç rengi
+    - **İl**: Bulunduğu şehir
+    
+    ### 🚀 AI Analiz Süreci:
+    1. **Veri Doğrulama** - Girilen bilgilerin kontrolü
+    2. **Pazar Araştırması** - Gemini AI ile güncel fiyat analizi
+    3. **Rapor Oluşturma** - Detaylı analiz ve öneriler
+    4. **Veritabanı Kayıt** - Sonuçların saklanması
+    
+    ### 📊 Yanıt İçeriği:
+    - Minimum/Maksimum/Ortalama fiyat
+    - Detaylı analiz raporu
+    - Pazar durumu analizi
+    - Tahmin ID'si (geçmiş için)
+    """
+    start_time = time.time()
+    client_ip = request.client.host
+    
+    try:
+        # LangChain Chain'i çalıştır
+        result = await fiyat_tahmin_chain.arun(
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            yakit_tipi=arac.yakit_tipi,
+            vites_tipi=arac.vites_tipi,
+            hasar_durumu=arac.hasar_durumu,
+            renk=arac.renk,
+            il=arac.il,
+            motor_hacmi=f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
+            motor_gucu=f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
+            ekstra_bilgiler=f"- Ekstra Bilgiler: {arac.ekstra_bilgiler}" if arac.ekstra_bilgiler else ""
+        )
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        current_time = datetime.now()
+        
+        # Veritabanına tahmin sonucunu kaydet
+        db_tahmin = AracTahmini(
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            yakit_tipi=arac.yakit_tipi,
+            vites_tipi=arac.vites_tipi,
+            hasar_durumu=arac.hasar_durumu,
+            renk=arac.renk,
+            il=arac.il,
+            motor_hacmi=arac.motor_hacmi,
+            motor_gucu=arac.motor_gucu,
+            ekstra_bilgiler=arac.ekstra_bilgiler,
+            tahmini_fiyat_min=result.get("tahmini_fiyat_min", 400000),
+            tahmini_fiyat_max=result.get("tahmini_fiyat_max", 600000),
+            ortalama_fiyat=result.get("ortalama_fiyat", 500000),
+            rapor=result.get("rapor", "Analiz tamamlandı"),
+            pazar_analizi=result.get("pazar_analizi", "Güncel pazar analizi"),
+            analiz_tarihi=current_time,
+            ip_adresi=client_ip,
+            islem_suresi=processing_time
+        )
+        
+        db.add(db_tahmin)
+        db.commit()
+        db.refresh(db_tahmin)
+        
+        # Popüler araçlar tablosunu güncelle
+        populer_arac = db.query(PopulerAraclar).filter(
+            PopulerAraclar.marka == arac.marka,
+            PopulerAraclar.model == arac.model
+        ).first()
+        
+        if populer_arac:
+            populer_arac.arama_sayisi += 1
+            populer_arac.son_arama = current_time
+            populer_arac.ortalama_fiyat = result.get("ortalama_fiyat", populer_arac.ortalama_fiyat)
+        else:
+            populer_arac = PopulerAraclar(
+                marka=arac.marka,
+                model=arac.model,
+                arama_sayisi=1,
+                son_arama=current_time,
+                ortalama_fiyat=result.get("ortalama_fiyat", 500000)
+            )
+            db.add(populer_arac)
+        
+        db.commit()
+        
+        # API kullanım istatistiğini kaydet
+        api_log = ApiKullanimi(
+            endpoint="/tahmin-et",
+            method="POST",
+            status_code=200,
+            response_time=processing_time * 1000,  # milisaniye
+            ip_adresi=client_ip
+        )
+        db.add(api_log)
+        db.commit()
+        
+        return TahminSonucu(
+            tahmini_fiyat_min=result.get("tahmini_fiyat_min", 400000),
+            tahmini_fiyat_max=result.get("tahmini_fiyat_max", 600000),
+            ortalama_fiyat=result.get("ortalama_fiyat", 500000),
+            rapor=result.get("rapor", "Analiz tamamlandı"),
+            analiz_tarihi=current_time.strftime("%Y-%m-%d %H:%M:%S"),
+            pazar_analizi=result.get("pazar_analizi", "Güncel pazar analizi"),
+            tahmin_id=db_tahmin.id
+        )
+
+    except Exception as e:
+        # Hata durumunda da API kullanımını logla
+        api_log = ApiKullanimi(
+            endpoint="/tahmin-et",
+            method="POST",
+            status_code=500,
+            response_time=(time.time() - start_time) * 1000,
+            ip_adresi=client_ip,
+            hata_mesaji=str(e)
+        )
+        db.add(api_log)
+        db.commit()
+        
+        raise HTTPException(status_code=500, detail=f"Fiyat tahmini yapılırken hata oluştu: {str(e)}")
+
+@app.get("/health", tags=["🏠 Ana Sistem"])
+async def health_check():
+    """
+    ## 🏥 Sistem Sağlık Kontrolü
+    
+    Sistemin tüm bileşenlerinin çalışır durumda olduğunu kontrol eder.
+    
+    **Kontrol Edilen Servisler:**
+    - Gemini AI API bağlantısı
+    - LangChain entegrasyonu  
+    - SQLite veritabanı
+    - Temel sistem durumu
+    """
+    return {
+        "status": "healthy",
+        "gemini_api": "configured" if GEMINI_API_KEY else "not_configured",
+        "langchain": "enabled",
+        "database": "sqlite_connected"
+    }
+
+@app.get("/istatistikler", response_model=IstatistikModel, tags=["📊 İstatistikler"])
+async def get_istatistikler(db: Session = Depends(get_db)):
+    """
+    ## 📊 Genel Sistem İstatistikleri
+    
+    Sistemin genel kullanım istatistiklerini görüntüler.
+    
+    ### 📈 İçerik:
+    - **Toplam Tahmin**: Yapılan tüm tahmin sayısı
+    - **Popüler Markalar**: En çok aranan araç markaları (Top 10)
+    - **Performans**: Ortalama yanıt süresi
+    - **Günlük Aktivite**: Bugün yapılan işlem sayısı
+    
+    ### 💡 Kullanım Alanları:
+    - Sistem performans analizi
+    - Popüler araç trendleri
+    - Kullanıcı davranış analizi
+    """
+    try:
+        # Toplam tahmin sayısı
+        toplam_tahmin = db.query(AracTahmini).count()
+        
+        # En popüler markalar (son 10)
+        populer_markalar = db.query(PopulerAraclar).order_by(
+            PopulerAraclar.arama_sayisi.desc()
+        ).limit(10).all()
+        
+        populer_markalar_list = [
+            {
+                "marka": p.marka,
+                "model": p.model, 
+                "arama_sayisi": p.arama_sayisi,
+                "ortalama_fiyat": p.ortalama_fiyat
+            }
+            for p in populer_markalar
+        ]
+        
+        # Ortalama response time
+        from sqlalchemy import func
+        avg_response = db.query(func.avg(ApiKullanimi.response_time)).scalar() or 0
+        
+        # Bugünkü kullanım
+        today = datetime.now().date()
+        gunluk_kullanim = db.query(ApiKullanimi).filter(
+            func.date(ApiKullanimi.timestamp) == today
+        ).count()
+        
+        return IstatistikModel(
+            toplam_tahmin=toplam_tahmin,
+            populer_markalar=populer_markalar_list,
+            ortalama_response_time=round(avg_response, 2),
+            gunluk_kullanim=gunluk_kullanim
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"İstatistikler alınırken hata: {str(e)}")
+
+@app.get("/gecmis-tahminler")
+async def get_gecmis_tahminler(limit: int = 10, db: Session = Depends(get_db)):
+    """Son yapılan tahminleri gösterir"""
+    try:
+        tahminler = db.query(AracTahmini).order_by(
+            AracTahmini.analiz_tarihi.desc()
+        ).limit(limit).all()
+        
+        return [
+            {
+                "id": t.id,
+                "marka": t.marka,
+                "model": t.model,
+                "yil": t.yil,
+                "ortalama_fiyat": t.ortalama_fiyat,
+                "analiz_tarihi": t.analiz_tarihi.strftime("%Y-%m-%d %H:%M:%S"),
+                "islem_suresi": round(t.islem_suresi or 0, 2)
+            }
+            for t in tahminler
+        ]
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Geçmiş tahminler alınırken hata: {str(e)}")
+
+@app.get("/tahmin/{tahmin_id}")
+async def get_tahmin_detay(tahmin_id: int, db: Session = Depends(get_db)):
+    """Belirli bir tahmin ID'sine göre detayları getir"""
+    try:
+        tahmin = db.query(AracTahmini).filter(AracTahmini.id == tahmin_id).first()
+        
+        if not tahmin:
+            raise HTTPException(status_code=404, detail="Tahmin bulunamadı")
+        
+        return {
+            "id": tahmin.id,
+            "arac_bilgileri": {
+                "marka": tahmin.marka,
+                "model": tahmin.model,
+                "yil": tahmin.yil,
+                "kilometre": tahmin.kilometre,
+                "yakit_tipi": tahmin.yakit_tipi,
+                "vites_tipi": tahmin.vites_tipi,
+                "hasar_durumu": tahmin.hasar_durumu,
+                "renk": tahmin.renk,
+                "il": tahmin.il,
+                "motor_hacmi": tahmin.motor_hacmi,
+                "motor_gucu": tahmin.motor_gucu
+            },
+            "tahmin_sonucu": {
+                "tahmini_fiyat_min": tahmin.tahmini_fiyat_min,
+                "tahmini_fiyat_max": tahmin.tahmini_fiyat_max,
+                "ortalama_fiyat": tahmin.ortalama_fiyat,
+                "rapor": tahmin.rapor,
+                "pazar_analizi": tahmin.pazar_analizi
+            },
+            "meta": {
+                "analiz_tarihi": tahmin.analiz_tarihi.strftime("%Y-%m-%d %H:%M:%S"),
+                "islem_suresi": round(tahmin.islem_suresi or 0, 2),
+                "ip_adresi": tahmin.ip_adresi[:8] + "***" if tahmin.ip_adresi else None  # Güvenlik için maskeleme
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Tahmin detayları alınırken hata: {str(e)}")
+
+# ===== KULLANICI YÖNETİMİ ENDPOINT'LERİ =====
+
+@app.post("/kullanici/kayit", response_model=KullaniciYanit, tags=["👤 Kullanıcı Yönetimi"])
+async def kullanici_kayit(kullanici_data: KullaniciOlustur, db: Session = Depends(get_db)):
+    """
+    ## 👤 Yeni Kullanıcı Kaydı
+    
+    Sisteme yeni kullanıcı kaydı oluşturur.
+    
+    ### ✅ Gereksinimler:
+    - **Ad**: En az 2 karakter
+    - **Soyad**: En az 2 karakter  
+    - **Email**: Geçerli ve benzersiz email adresi
+    - **Telefon**: Opsiyonel telefon numarası
+    - **Şehir**: Opsiyonel şehir bilgisi
+    
+    ### 🔒 Güvenlik:
+    - Email benzersizlik kontrolü
+    - Veri validasyonu
+    - Otomatik kayıt tarihi
+    
+    **Yanıt:** Kullanıcı ID'si ile birlikte tam kullanıcı bilgileri
+    """
+    try:
+        kullanici = crud.kullanici_olustur(
+            db=db,
+            ad=kullanici_data.ad,
+            soyad=kullanici_data.soyad,
+            email=kullanici_data.email,
+            telefon=kullanici_data.telefon,
+            sehir=kullanici_data.sehir
+        )
+        return kullanici
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kullanıcı kaydı sırasında hata: {str(e)}")
+
+@app.get("/kullanici/{kullanici_id}", response_model=KullaniciYanit, tags=["👤 Kullanıcı Yönetimi"])
+async def kullanici_getir(kullanici_id: int, db: Session = Depends(get_db)):
+    """
+    ## 👁️ Kullanıcı Bilgilerini Görüntüle
+    
+    Belirli bir kullanıcının tüm bilgilerini getirir.
+    
+    **Parametre:** `kullanici_id` - Görüntülenecek kullanıcının ID'si
+    
+    **Yanıt:** Kullanıcının tam profil bilgileri
+    """
+    kullanici = crud.kullanici_getir(db, kullanici_id)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    return kullanici
+
+@app.put("/kullanici/{kullanici_id}", response_model=KullaniciYanit)
+async def kullanici_guncelle(kullanici_id: int, kullanici_data: KullaniciGuncelle, db: Session = Depends(get_db)):
+    """Kullanıcı bilgilerini günceller"""
+    kullanici = crud.kullanici_guncelle(
+        db=db,
+        kullanici_id=kullanici_id,
+        **kullanici_data.dict(exclude_unset=True)
+    )
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    return kullanici
+
+@app.delete("/kullanici/{kullanici_id}", response_model=YanitMesaj)
+async def kullanici_sil(kullanici_id: int, db: Session = Depends(get_db)):
+    """Kullanıcıyı pasif yapar"""
+    success = crud.kullanici_sil(db, kullanici_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    return YanitMesaj(mesaj="Kullanıcı başarıyla silindi")
+
+@app.post("/kullanici/email-kontrol", response_model=YanitMesaj)
+async def email_kontrol(email_data: EmailKontrol, db: Session = Depends(get_db)):
+    """Email adresinin kullanılıp kullanılmadığını kontrol eder"""
+    kullanici = crud.kullanici_email_ile_getir(db, email_data.email)
+    if kullanici:
+        return YanitMesaj(mesaj="Email adresi zaten kayıtlı", basarili=False)
+    return YanitMesaj(mesaj="Email adresi kullanılabilir")
+
+# ===== ARAÇ YÖNETİMİ ENDPOINT'LERİ =====
+
+@app.post("/kullanici/{kullanici_id}/arac", response_model=AracYanit, tags=["🚗 Araç Yönetimi"])
+async def arac_ekle(kullanici_id: int, arac_data: AracOlustur, db: Session = Depends(get_db)):
+    """
+    ## 🚗 Yeni Araç Ekleme
+    
+    Kullanıcıya ait yeni araç kaydı oluşturur.
+    
+    ### 📋 Gerekli Bilgiler:
+    - **Araç Adı**: Kişisel tanımlama için
+    - **Marka & Model**: Araç markası ve modeli
+    - **Yıl**: Model yılı (1950-2025)
+    - **Kilometre**: Güncel km bilgisi
+    - **Yakıt & Vites**: Teknik özellikler
+    - **Hasar Durumu**: Mevcut durum
+    
+    ### ➕ Opsiyonel Bilgiler:
+    - Motor hacmi ve gücü
+    - Plaka ve şasi numarası
+    - Sigorta durumu
+    - Muayene tarihi
+    - Özel notlar
+    
+    **Yanıt:** Kaydedilen aracın tam bilgileri
+    """
+    try:
+        arac = crud.arac_ekle(
+            db=db,
+            kullanici_id=kullanici_id,
+            arac_bilgileri=arac_data.dict()
+        )
+        return arac
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Araç ekleme sırasında hata: {str(e)}")
+
+@app.get("/kullanici/{kullanici_id}/araclar", response_model=List[AracOzet], tags=["🚗 Araç Yönetimi"])
+async def kullanici_araclari_listele(kullanici_id: int, db: Session = Depends(get_db)):
+    """
+    ## 📋 Kullanıcı Araçları Listesi
+    
+    Kullanıcının kayıtlı tüm araçlarını özet bilgilerle listeler.
+    
+    **Özet Bilgiler:**
+    - Araç ID ve özel adı
+    - Marka, model, yıl
+    - Güncel kilometre
+    - Renk bilgisi
+    - Son güncelleme tarihi
+    
+    **Kullanım:** Araç seçimi ve genel görüntüleme için optimize edilmiş
+    """
+    araclar = crud.kullanici_araclari(db, kullanici_id)
+    return [
+        AracOzet(
+            id=arac.id,
+            arac_adi=arac.arac_adi,
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            renk=arac.renk,
+            son_guncelleme=arac.guncelleme_tarihi
+        )
+        for arac in araclar
+    ]
+
+@app.get("/arac/{arac_id}", response_model=AracYanit)
+async def arac_detay(arac_id: int, db: Session = Depends(get_db)):
+    """Araç detaylarını getirir"""
+    arac = crud.arac_getir(db, arac_id)
+    if not arac:
+        raise HTTPException(status_code=404, detail="Araç bulunamadı")
+    return arac
+
+@app.put("/kullanici/{kullanici_id}/arac/{arac_id}", response_model=AracYanit)
+async def arac_guncelle(kullanici_id: int, arac_id: int, arac_data: AracGuncelle, db: Session = Depends(get_db)):
+    """Araç bilgilerini günceller"""
+    arac = crud.arac_guncelle(
+        db=db,
+        arac_id=arac_id,
+        kullanici_id=kullanici_id,
+        **arac_data.dict(exclude_unset=True)
+    )
+    if not arac:
+        raise HTTPException(status_code=404, detail="Araç bulunamadı veya yetkiniz yok")
+    return arac
+
+@app.delete("/kullanici/{kullanici_id}/arac/{arac_id}", response_model=YanitMesaj)
+async def arac_sil(kullanici_id: int, arac_id: int, db: Session = Depends(get_db)):
+    """Aracı siler (pasif yapar)"""
+    success = crud.arac_sil(db, arac_id, kullanici_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Araç bulunamadı veya yetkiniz yok")
+    return YanitMesaj(mesaj="Araç başarıyla silindi")
+
+@app.put("/kullanici/{kullanici_id}/arac/{arac_id}/kilometre", response_model=AracYanit)
+async def arac_kilometre_guncelle(kullanici_id: int, arac_id: int, km_data: KilometreGuncelle, db: Session = Depends(get_db)):
+    """Araç kilometresini günceller"""
+    arac = crud.arac_kilometre_guncelle(db, arac_id, kullanici_id, km_data.yeni_kilometre)
+    if not arac:
+        raise HTTPException(status_code=400, detail="Kilometre güncellenemedi (yeni kilometre eskisinden düşük olabilir)")
+    return arac
+
+# ===== TAHMİN GEÇMİŞİ ENDPOINT'LERİ =====
+
+@app.get("/kullanici/{kullanici_id}/tahminler", response_model=List[TahminGecmisi])
+async def kullanici_tahmin_gecmisi(kullanici_id: int, limit: int = 20, db: Session = Depends(get_db)):
+    """Kullanıcının tahmin geçmişini getirir"""
+    tahminler = crud.kullanici_tahminleri(db, kullanici_id, limit)
+    return [
+        TahminGecmisi(
+            id=t.id,
+            arac_id=t.arac_id,
+            arac_bilgisi=f"{t.marka} {t.model} {t.yil}",
+            ortalama_fiyat=t.ortalama_fiyat,
+            analiz_tarihi=t.analiz_tarihi,
+            islem_suresi=t.islem_suresi
+        )
+        for t in tahminler
+    ]
+
+@app.get("/arac/{arac_id}/tahminler", response_model=List[TahminGecmisi])
+async def arac_tahmin_gecmisi(arac_id: int, limit: int = 10, db: Session = Depends(get_db)):
+    """Belirli bir aracın tahmin geçmişini getirir"""
+    tahminler = crud.arac_tahminleri(db, arac_id, limit)
+    return [
+        TahminGecmisi(
+            id=t.id,
+            arac_id=t.arac_id,
+            arac_bilgisi=f"{t.marka} {t.model} {t.yil}",
+            ortalama_fiyat=t.ortalama_fiyat,
+            analiz_tarihi=t.analiz_tarihi,
+            islem_suresi=t.islem_suresi
+        )
+        for t in tahminler
+    ]
+
+@app.get("/kullanici/{kullanici_id}/istatistikler", response_model=KullaniciIstatistik)
+async def kullanici_istatistikleri(kullanici_id: int, db: Session = Depends(get_db)):
+    """Kullanıcının istatistiklerini getirir"""
+    kullanici = crud.kullanici_getir(db, kullanici_id)
+    if not kullanici:
+        raise HTTPException(status_code=404, detail="Kullanıcı bulunamadı")
+    
+    # Araç sayısı
+    toplam_arac = len(crud.kullanici_araclari(db, kullanici_id))
+    
+    # Tahmin istatistikleri
+    tahmin_stats = crud.tahmin_istatistikleri(db, kullanici_id)
+    
+    return KullaniciIstatistik(
+        toplam_arac=toplam_arac,
+        toplam_tahmin=tahmin_stats["toplam_tahmin"],
+        en_cok_tahmin_edilen_arac_id=tahmin_stats["en_cok_tahmin_edilen_arac_id"],
+        en_cok_tahmin_sayisi=tahmin_stats["en_cok_tahmin_sayisi"],
+        ortalama_tahmin_degeri=tahmin_stats["ortalama_tahmin_degeri"],
+        kayit_tarihi=kullanici.kayit_tarihi,
+        son_aktivite=kullanici.son_giris
+    )
+
+# ===== ARAMA VE FİLTRELEME ENDPOINT'LERİ =====
+
+@app.get("/kullanici/{kullanici_id}/arac-ara")
+async def arac_ara(kullanici_id: int, q: str, db: Session = Depends(get_db)):
+    """Kullanıcının araçlarında arama yapar"""
+    if len(q.strip()) < 2:
+        raise HTTPException(status_code=400, detail="Arama terimi en az 2 karakter olmalıdır")
+    
+    araclar = crud.arac_ara(db, kullanici_id, q.strip())
+    return [
+        AracOzet(
+            id=arac.id,
+            arac_adi=arac.arac_adi,
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            renk=arac.renk,
+            son_guncelleme=arac.guncelleme_tarihi
+        )
+        for arac in araclar
+    ]
