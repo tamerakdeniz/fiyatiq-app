@@ -143,11 +143,17 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY çevre değişkeni ayarlanmamış!")
 
+# Gemini model konfigürasyonu
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp")
+GEMINI_TEMPERATURE = float(os.getenv("GEMINI_TEMPERATURE", "0.3"))
+GEMINI_MAX_TOKENS = int(os.getenv("GEMINI_MAX_TOKENS", "2048"))
+
 # LangChain ile Gemini modelini oluştur
 llm = ChatGoogleGenerativeAI(
-    model="gemini-pro",
+    model=GEMINI_MODEL,
     google_api_key=GEMINI_API_KEY,
-    temperature=0.3,  # Daha tutarlı sonuçlar için düşük temperature
+    temperature=GEMINI_TEMPERATURE,  # Daha tutarlı sonuçlar için düşük temperature
+    max_tokens=GEMINI_MAX_TOKENS,
     convert_system_message_to_human=True
 )
 
