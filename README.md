@@ -35,7 +35,7 @@ FiyatIQ, kullanıcıların araç bilgilerini girerek **Gemini AI** ile güncel p
 
 ### 1. Projeyi Klonlayın
 ```bash
-git clone <repo-url>
+git clone https://github.com/tamerakdeniz/fiyatiq-app
 cd fiyatiq
 ```
 
