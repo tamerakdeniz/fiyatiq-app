@@ -1,56 +1,62 @@
-"use client"
+'use client';
 
-import type React from "react"
+import type React from 'react';
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Loader2, Car } from "lucide-react"
-import { useAuth } from "@/contexts/auth-context"
-import { useToast } from "@/hooks/use-toast"
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useAuth } from '@/contexts/auth-context';
+import { useToast } from '@/hooks/use-toast';
+import { Car, Loader2 } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function SigninPage() {
   const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
+    email: '',
+    password: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const { signin } = useAuth()
-  const router = useRouter()
-  const { toast } = useToast()
+  const { signin } = useAuth();
+  const router = useRouter();
+  const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError("")
+    e.preventDefault();
+    setLoading(true);
+    setError('');
 
     try {
-      await signin(formData.email, formData.password)
+      await signin(formData.email, formData.password);
       toast({
-        title: "Tekrar hoş geldiniz!",
-        description: "Başarıyla giriş yaptınız.",
-      })
-      router.push("/dashboard")
+        title: 'Tekrar hoş geldiniz!',
+        description: 'Başarıyla giriş yaptınız.'
+      });
+      router.push('/dashboard');
     } catch (err: any) {
-      setError(err.message || "Giriş yapılamadı")
+      setError(err.message || 'Giriş yapılamadı');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData((prev) => ({
+    setFormData(prev => ({
       ...prev,
-      [e.target.name]: e.target.value,
-    }))
-  }
+      [e.target.name]: e.target.value
+    }));
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -64,20 +70,25 @@ export default function SigninPage() {
         </CardHeader>
         <CardContent>
           {/* Debug Panel - Development Only */}
-          {process.env.NODE_ENV === "development" && (
+          {process.env.NODE_ENV === 'development' && (
             <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="font-semibold text-blue-800 text-sm mb-2">🧪 Demo Hesap</h4>
+              <h4 className="font-semibold text-blue-800 text-sm mb-2">
+                🧪 Demo Hesap
+              </h4>
               <div className="text-xs text-blue-700 space-y-1">
                 <p>
-                  <strong>Email:</strong> demo@demo.com
+                  <strong>Email:</strong> demo@example.com
                 </p>
                 <p>
-                  <strong>Şifre:</strong> 12345678
+                  <strong>Şifre:</strong> 123456
                 </p>
                 <button
                   type="button"
                   onClick={() => {
-                    setFormData({ email: "demo@demo.com", password: "12345678" })
+                    setFormData({
+                      email: 'demo@example.com',
+                      password: '123456'
+                    });
                   }}
                   className="mt-2 px-2 py-1 bg-blue-100 hover:bg-blue-200 rounded text-xs"
                 >
@@ -127,7 +138,7 @@ export default function SigninPage() {
                   Giriş yapılıyor...
                 </>
               ) : (
-                "Giriş Yap"
+                'Giriş Yap'
               )}
             </Button>
           </form>
@@ -141,5 +152,5 @@ export default function SigninPage() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

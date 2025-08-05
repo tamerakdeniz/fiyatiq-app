@@ -11,12 +11,11 @@ from typing import Optional
 
 import bcrypt
 import jwt
+from database import Kullanici, get_db
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, validator
 from sqlalchemy.orm import Session
-
-from database import Kullanici, get_db
 
 # Security Configuration
 SECRET_KEY = "your-secret-key-change-in-production-use-env-variable"  # Change this in production!
@@ -41,17 +40,9 @@ class UserRegister(BaseModel):
     
     @validator('password')
     def validate_password(cls, v):
-        """Validate password strength"""
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not any(c.isupper() for c in v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not any(c.islower() for c in v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('Password must contain at least one digit')
-        if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in v):
-            raise ValueError('Password must contain at least one special character')
+        """Validate password strength - simplified for demo"""
+        if len(v) < 6:
+            raise ValueError('Şifre en az 6 karakter olmalıdır')
         return v
     
     @validator('ad', 'soyad')
@@ -98,17 +89,9 @@ class PasswordChange(BaseModel):
     
     @validator('new_password')
     def validate_new_password(cls, v):
-        """Validate new password strength"""
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters long')
-        if not any(c.isupper() for c in v):
-            raise ValueError('Password must contain at least one uppercase letter')
-        if not any(c.islower() for c in v):
-            raise ValueError('Password must contain at least one lowercase letter')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('Password must contain at least one digit')
-        if not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?' for c in v):
-            raise ValueError('Password must contain at least one special character')
+        """Validate new password strength - simplified for demo"""
+        if len(v) < 6:
+            raise ValueError('Şifre en az 6 karakter olmalıdır')
         return v
 
 # Password Hashing Functions

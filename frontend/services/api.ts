@@ -168,19 +168,9 @@ export const authService = {
       const ad = nameParts[0] || '';
       const soyad = nameParts.slice(1).join(' ') || '';
 
-      // Validate password requirements
-      if (password.length < 8) {
-        throw new ApiError('Password must be at least 8 characters long');
-      }
-      if (!password.match(/[A-Z]/)) {
-        throw new ApiError(
-          'Password must contain at least one uppercase letter'
-        );
-      }
-      if (!password.match(/[a-z]/)) {
-        throw new ApiError(
-          'Password must contain at least one lowercase letter'
-        );
+      // Validate password requirements - simplified for demo
+      if (password.length < 6) {
+        throw new ApiError('Şifre en az 6 karakter olmalıdır');
       }
 
       const response = await apiCall<{

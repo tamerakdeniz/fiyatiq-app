@@ -113,7 +113,7 @@ function ProfileContent() {
     }
 
     if (passwordData.newPassword.length < 6) {
-      setErrors({ password: 'New password must be at least 6 characters' });
+      setErrors({ password: 'Yeni şifre en az 6 karakter olmalıdır' });
       setChangingPassword(false);
       return;
     }

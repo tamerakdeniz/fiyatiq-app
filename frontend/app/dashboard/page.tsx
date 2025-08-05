@@ -12,9 +12,8 @@ import {
   CardHeader,
   CardTitle
 } from '@/components/ui/card';
-import { useAuth } from '@/contexts/auth-context';
 import { useToast } from '@/hooks/use-toast';
-import { systemService, vehicleService } from '@/services/api';
+import { vehicleService } from '@/services/api';
 import type { Vehicle } from '@/types';
 import {
   AlertTriangle,
@@ -36,24 +35,12 @@ function DashboardContent() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [backendStats, setBackendStats] = useState<any>(null);
   const router = useRouter();
   const { toast } = useToast();
-  const { backendConnected } = useAuth();
 
   useEffect(() => {
     loadVehicles();
-    loadBackendStats();
   }, []);
-
-  const loadBackendStats = async () => {
-    try {
-      const stats = await systemService.getStatistics();
-      setBackendStats(stats);
-    } catch (error) {
-      console.log('Could not load backend statistics:', error);
-    }
-  };
 
   const loadVehicles = async () => {
     try {
@@ -65,75 +52,6 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const backendStatusInfo = () => {
-    return (
-      <div
-        className={`mb-4 p-4 border rounded-lg ${
-          backendConnected
-            ? 'bg-green-50 border-green-200'
-            : 'bg-red-50 border-red-200'
-        }`}
-      >
-        <h3
-          className={`font-semibold mb-2 ${
-            backendConnected ? 'text-green-800' : 'text-red-800'
-          }`}
-        >
-          {backendConnected ? '🟢 Backend Bağlı' : '🔴 Backend Bağlantısı Yok'}
-        </h3>
-        <div
-          className={`text-sm space-y-1 ${
-            backendConnected ? 'text-green-700' : 'text-red-700'
-          }`}
-        >
-          {backendConnected ? (
-            <>
-              <p>
-                <strong>Durum:</strong> FastAPI backend çalışıyor ve
-                erişilebilir
-              </p>
-              <p>
-                <strong>API Base URL:</strong>{' '}
-                {process.env.NEXT_PUBLIC_API_BASE_URL ||
-                  'http://localhost:8000'}
-              </p>
-              {backendStats && (
-                <>
-                  <p>
-                    <strong>Toplam Tahmin:</strong> {backendStats.toplam_tahmin}
-                  </p>
-                  <p>
-                    <strong>Ortalama Yanıt Süresi:</strong>{' '}
-                    {backendStats.ortalama_response_time}ms
-                  </p>
-                  <p>
-                    <strong>Günlük Kullanım:</strong>{' '}
-                    {backendStats.gunluk_kullanim}
-                  </p>
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              <p>
-                <strong>Sorun:</strong> FastAPI backend'e bağlanılamıyor
-              </p>
-              <p>
-                <strong>Beklenen URL:</strong>{' '}
-                {process.env.NEXT_PUBLIC_API_BASE_URL ||
-                  'http://localhost:8000'}
-              </p>
-              <p>
-                <strong>Çözüm:</strong> Backend sunucusunu şu komutla başlatın:{' '}
-                <code>cd backend && uvicorn main:app --reload</code>
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-    );
   };
 
   const handleDelete = async (id: string) => {
@@ -157,7 +75,18 @@ function DashboardContent() {
 
   const handleRecalculate = async (vehicle: Vehicle) => {
     try {
-      const updatedVehicle = await vehicleService.recalculatePrice(vehicle.id);
+      const result = await vehicleService.estimatePrice({
+        brand: vehicle.brand,
+        model: vehicle.model,
+        year: vehicle.year,
+        km: vehicle.km,
+        damageStatus: vehicle.damageStatus
+      });
+      const updatedVehicle = {
+        ...vehicle,
+        estimatedPrice: result.estimatedPrice,
+        aiSummary: result.aiSummary
+      };
       setVehicles(prev =>
         prev.map(v => (v.id === vehicle.id ? updatedVehicle : v))
       );
@@ -206,7 +135,6 @@ function DashboardContent() {
 
   return (
     <div className="space-y-6">
-      {backendStatusInfo()}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold">Araçlarım</h1>

@@ -5,6 +5,7 @@ import type React from 'react';
 import { Navbar } from '@/components/navbar';
 import { PrivateRoute } from '@/components/private-route';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -23,23 +24,21 @@ import {
   SelectValue
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Brain, 
-  Car, 
-  Loader2, 
-  Save, 
-  TrendingUp, 
-  Plus,
-  Trash2,
-  Settings,
+import { vehicleService } from '@/services/api';
+import {
   AlertCircle,
+  BarChart3,
+  Brain,
+  Car,
   DollarSign,
-  BarChart3
+  Loader2,
+  Plus,
+  Save,
+  Trash2
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 interface CarPart {
   id: number;
@@ -101,14 +100,49 @@ function DetailedEstimateContent() {
     kaza_gecmisi: false,
     ekstra_bilgiler: ''
   });
-  
+
   const [damageDetails, setDamageDetails] = useState<DamageDetail[]>([]);
   const [carParts, setCarParts] = useState<CarPart[]>([]);
   const [damageTypes, setDamageTypes] = useState<DamageType[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
-  const [result, setResult] = useState<DetailedEstimationResult | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!result) return;
+
+    setSaving(true);
+    try {
+      const vehicleData = {
+        brand: formData.marka,
+        model: formData.model,
+        year: parseInt(formData.yil),
+        km: parseInt(formData.kilometre),
+        damageStatus: `Detaylı (${damageDetails.length} hasar)`,
+        fuelType: formData.yakit_tipi,
+        transmission: formData.vites_tipi,
+        color: formData.renk,
+        estimatedPrice: result.net_fiyat,
+        aiSummary: result.rapor
+      };
+
+      await vehicleService.saveVehicle(vehicleData);
+      toast({
+        title: 'Araç kaydedildi!',
+        description: 'Araç panonuza eklendi.'
+      });
+      router.push('/dashboard');
+    } catch (err: any) {
+      toast({
+        title: 'Hata',
+        description: err.message || 'Araç kaydedilemedi',
+        variant: 'destructive'
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+  const [result, setResult] = useState<DetailedEstimationResult | null>(null);
   const [error, setError] = useState('');
 
   const router = useRouter();
@@ -117,12 +151,28 @@ function DetailedEstimateContent() {
   const fuelOptions = ['Benzin', 'Dizel', 'LPG', 'Hibrit', 'Elektrik'];
   const transmissionOptions = ['Manuel', 'Otomatik'];
   const colorOptions = [
-    'Beyaz', 'Siyah', 'Gri', 'Mavi', 'Kırmızı', 
-    'Yeşil', 'Sarı', 'Turuncu', 'Mor', 'Kahverengi'
+    'Beyaz',
+    'Siyah',
+    'Gri',
+    'Mavi',
+    'Kırmızı',
+    'Yeşil',
+    'Sarı',
+    'Turuncu',
+    'Mor',
+    'Kahverengi'
   ];
   const cityOptions = [
-    'İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya',
-    'Adana', 'Konya', 'Gaziantep', 'Mersin', 'Diyarbakır'
+    'İstanbul',
+    'Ankara',
+    'İzmir',
+    'Bursa',
+    'Antalya',
+    'Adana',
+    'Konya',
+    'Gaziantep',
+    'Mersin',
+    'Diyarbakır'
   ];
   const conditionOptions = ['Mükemmel', 'Çok İyi', 'İyi', 'Orta', 'Kötü'];
   const maintenanceOptions = ['Düzenli', 'Kısmen', 'Eksik', 'Bilinmiyor'];
@@ -188,9 +238,11 @@ function DetailedEstimateContent() {
   };
 
   const updateDamageDetail = (index: number, field: string, value: any) => {
-    setDamageDetails(prev => prev.map((detail, i) => 
-      i === index ? { ...detail, [field]: value } : detail
-    ));
+    setDamageDetails(prev =>
+      prev.map((detail, i) =>
+        i === index ? { ...detail, [field]: value } : detail
+      )
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -209,21 +261,25 @@ function DetailedEstimateContent() {
         vites_tipi: formData.vites_tipi,
         renk: formData.renk,
         il: formData.il,
-        motor_hacmi: formData.motor_hacmi ? parseFloat(formData.motor_hacmi) : null,
+        motor_hacmi: formData.motor_hacmi
+          ? parseFloat(formData.motor_hacmi)
+          : null,
         motor_gucu: formData.motor_gucu ? parseInt(formData.motor_gucu) : null,
         genel_durum: formData.genel_durum,
         bakım_durumu: formData.bakım_durumu,
         kaza_gecmisi: formData.kaza_gecmisi,
         ekstra_bilgiler: formData.ekstra_bilgiler,
-        hasar_detaylari: damageDetails.filter(d => d.parca_id > 0 && d.hasar_tipi_id > 0)
+        hasar_detaylari: damageDetails.filter(
+          d => d.parca_id > 0 && d.hasar_tipi_id > 0
+        )
       };
 
       const response = await fetch('http://localhost:8000/detayli-tahmin', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestData),
+        body: JSON.stringify(requestData)
       });
 
       if (!response.ok) {
@@ -233,10 +289,10 @@ function DetailedEstimateContent() {
 
       const result = await response.json();
       setResult(result);
-      
+
       toast({
         title: 'Başarılı!',
-        description: 'Detaylı fiyat tahmini tamamlandı',
+        description: 'Detaylı fiyat tahmini tamamlandı'
       });
     } catch (err: any) {
       setError(err.message || 'Fiyat tahmini yapılamadı');
@@ -264,7 +320,9 @@ function DetailedEstimateContent() {
   return (
     <div className="max-w-7xl mx-auto space-y-6">
       <div className="text-center">
-        <h1 className="text-3xl font-bold mb-2">Detaylı Araç Değerlendirmesi</h1>
+        <h1 className="text-3xl font-bold mb-2">
+          Detaylı Araç Değerlendirmesi
+        </h1>
         <p className="text-gray-600">
           Parça bazında hasar analizi ile profesyonel fiyat tahmini
         </p>
@@ -295,7 +353,7 @@ function DetailedEstimateContent() {
                 {/* Basic Vehicle Info */}
                 <div className="space-y-4">
                   <h3 className="font-medium text-lg">Temel Bilgiler</h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="brand">Marka</Label>
@@ -345,7 +403,9 @@ function DetailedEstimateContent() {
                         type="number"
                         placeholder="Örn: 50000"
                         value={formData.kilometre}
-                        onChange={e => handleChange('kilometre', e.target.value)}
+                        onChange={e =>
+                          handleChange('kilometre', e.target.value)
+                        }
                         required
                       />
                     </div>
@@ -356,7 +416,9 @@ function DetailedEstimateContent() {
                       <Label htmlFor="fuel">Yakıt Tipi</Label>
                       <Select
                         value={formData.yakit_tipi}
-                        onValueChange={value => handleChange('yakit_tipi', value)}
+                        onValueChange={value =>
+                          handleChange('yakit_tipi', value)
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -374,7 +436,9 @@ function DetailedEstimateContent() {
                       <Label htmlFor="transmission">Vites</Label>
                       <Select
                         value={formData.vites_tipi}
-                        onValueChange={value => handleChange('vites_tipi', value)}
+                        onValueChange={value =>
+                          handleChange('vites_tipi', value)
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -433,7 +497,7 @@ function DetailedEstimateContent() {
                 {/* Technical Details */}
                 <div className="space-y-4">
                   <h3 className="font-medium text-lg">Teknik Detaylar</h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="engine">Motor Hacmi (L)</Label>
@@ -443,7 +507,9 @@ function DetailedEstimateContent() {
                         step="0.1"
                         placeholder="Örn: 1.6"
                         value={formData.motor_hacmi}
-                        onChange={e => handleChange('motor_hacmi', e.target.value)}
+                        onChange={e =>
+                          handleChange('motor_hacmi', e.target.value)
+                        }
                       />
                     </div>
                     <div className="space-y-2">
@@ -453,7 +519,9 @@ function DetailedEstimateContent() {
                         type="number"
                         placeholder="Örn: 130"
                         value={formData.motor_gucu}
-                        onChange={e => handleChange('motor_gucu', e.target.value)}
+                        onChange={e =>
+                          handleChange('motor_gucu', e.target.value)
+                        }
                       />
                     </div>
                   </div>
@@ -462,13 +530,15 @@ function DetailedEstimateContent() {
                 {/* Condition Assessment */}
                 <div className="space-y-4">
                   <h3 className="font-medium text-lg">Durum Değerlendirmesi</h3>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="condition">Genel Durum</Label>
                       <Select
                         value={formData.genel_durum}
-                        onValueChange={value => handleChange('genel_durum', value)}
+                        onValueChange={value =>
+                          handleChange('genel_durum', value)
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -486,7 +556,9 @@ function DetailedEstimateContent() {
                       <Label htmlFor="maintenance">Bakım Durumu</Label>
                       <Select
                         value={formData.bakım_durumu}
-                        onValueChange={value => handleChange('bakım_durumu', value)}
+                        onValueChange={value =>
+                          handleChange('bakım_durumu', value)
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -507,7 +579,9 @@ function DetailedEstimateContent() {
                       type="checkbox"
                       id="accident"
                       checked={formData.kaza_gecmisi}
-                      onChange={e => handleChange('kaza_gecmisi', e.target.checked)}
+                      onChange={e =>
+                        handleChange('kaza_gecmisi', e.target.checked)
+                      }
                       className="rounded"
                     />
                     <Label htmlFor="accident">Kaza geçmişi var</Label>
@@ -549,14 +623,23 @@ function DetailedEstimateContent() {
                             <Label>Araç Parçası</Label>
                             <Select
                               value={detail.parca_id.toString()}
-                              onValueChange={value => updateDamageDetail(index, 'parca_id', parseInt(value))}
+                              onValueChange={value =>
+                                updateDamageDetail(
+                                  index,
+                                  'parca_id',
+                                  parseInt(value)
+                                )
+                              }
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="Parça seçin" />
                               </SelectTrigger>
                               <SelectContent>
                                 {carParts.map(part => (
-                                  <SelectItem key={part.id} value={part.id.toString()}>
+                                  <SelectItem
+                                    key={part.id}
+                                    value={part.id.toString()}
+                                  >
                                     {part.parca_adi} ({part.kategori})
                                   </SelectItem>
                                 ))}
@@ -568,14 +651,23 @@ function DetailedEstimateContent() {
                             <Label>Hasar Tipi</Label>
                             <Select
                               value={detail.hasar_tipi_id.toString()}
-                              onValueChange={value => updateDamageDetail(index, 'hasar_tipi_id', parseInt(value))}
+                              onValueChange={value =>
+                                updateDamageDetail(
+                                  index,
+                                  'hasar_tipi_id',
+                                  parseInt(value)
+                                )
+                              }
                             >
                               <SelectTrigger>
                                 <SelectValue placeholder="Hasar tipi seçin" />
                               </SelectTrigger>
                               <SelectContent>
                                 {damageTypes.map(damageType => (
-                                  <SelectItem key={damageType.id} value={damageType.id.toString()}>
+                                  <SelectItem
+                                    key={damageType.id}
+                                    value={damageType.id.toString()}
+                                  >
                                     {damageType.hasar_adi}
                                   </SelectItem>
                                 ))}
@@ -589,7 +681,13 @@ function DetailedEstimateContent() {
                             <Label>Hasar Seviyesi</Label>
                             <Select
                               value={detail.hasar_seviyesi}
-                              onValueChange={value => updateDamageDetail(index, 'hasar_seviyesi', value)}
+                              onValueChange={value =>
+                                updateDamageDetail(
+                                  index,
+                                  'hasar_seviyesi',
+                                  value
+                                )
+                              }
                             >
                               <SelectTrigger>
                                 <SelectValue />
@@ -610,7 +708,13 @@ function DetailedEstimateContent() {
                               type="number"
                               placeholder="Örn: 5000"
                               value={detail.tahmini_maliyet || ''}
-                              onChange={e => updateDamageDetail(index, 'tahmini_maliyet', parseInt(e.target.value) || null)}
+                              onChange={e =>
+                                updateDamageDetail(
+                                  index,
+                                  'tahmini_maliyet',
+                                  parseInt(e.target.value) || null
+                                )
+                              }
                             />
                           </div>
                         </div>
@@ -620,7 +724,13 @@ function DetailedEstimateContent() {
                           <Textarea
                             placeholder="Hasarla ilgili ek bilgiler..."
                             value={detail.aciklama}
-                            onChange={e => updateDamageDetail(index, 'aciklama', e.target.value)}
+                            onChange={e =>
+                              updateDamageDetail(
+                                index,
+                                'aciklama',
+                                e.target.value
+                              )
+                            }
                             rows={2}
                           />
                         </div>
@@ -638,13 +748,20 @@ function DetailedEstimateContent() {
                       id="notes"
                       placeholder="Araçla ilgili diğer önemli bilgiler..."
                       value={formData.ekstra_bilgiler}
-                      onChange={e => handleChange('ekstra_bilgiler', e.target.value)}
+                      onChange={e =>
+                        handleChange('ekstra_bilgiler', e.target.value)
+                      }
                       rows={3}
                     />
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full" disabled={loading} size="lg">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading}
+                  size="lg"
+                >
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -689,61 +806,71 @@ function DetailedEstimateContent() {
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-600">Pazar Fiyatı:</span>
-                    <span className="font-medium">₺{result.pazar_fiyati.toLocaleString()}</span>
+                    <span className="font-medium">
+                      ₺{result.pazar_fiyati.toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Hasar İndirimi:</span>
-                    <span className="font-medium text-red-600">-₺{result.hasar_indirimi.toLocaleString()}</span>
+                    <span className="text-sm text-gray-600">
+                      Hasar İndirimi:
+                    </span>
+                    <span className="font-medium text-red-600">
+                      -₺{result.hasar_indirimi.toLocaleString()}
+                    </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Depreciation:</span>
-                    <span className="font-medium text-red-600">%{(result.toplam_depreciation_orani * 100).toFixed(1)}</span>
+                    <span className="text-sm text-gray-600">Değer Kaybı:</span>
+                    <span className="font-medium text-red-600">
+                      %{(result.toplam_depreciation_orani * 100).toFixed(1)}
+                    </span>
                   </div>
                 </div>
 
                 <div className="pt-2 border-t">
                   <div className="text-xs text-gray-500">
-                    Fiyat Aralığı: ₺{result.tahmini_fiyat_min.toLocaleString()} - ₺{result.tahmini_fiyat_max.toLocaleString()}
+                    Fiyat Aralığı: ₺{result.tahmini_fiyat_min.toLocaleString()}{' '}
+                    - ₺{result.tahmini_fiyat_max.toLocaleString()}
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* Damage Breakdown */}
-            {result.hasar_detay_raporu && result.hasar_detay_raporu.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5 text-orange-600" />
-                    Hasar Analizi
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {result.hasar_detay_raporu.map((item, index) => (
-                      <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <div className="font-medium">{item.part}</div>
-                            <div className="text-sm text-gray-600">
-                              {item.damage_type} - {item.damage_level}
+            {result.hasar_detay_raporu &&
+              result.hasar_detay_raporu.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="h-5 w-5 text-orange-600" />
+                      Hasar Analizi
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {result.hasar_detay_raporu.map((item, index) => (
+                        <div key={index} className="p-3 bg-gray-50 rounded-lg">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <div className="font-medium">{item.part}</div>
+                              <div className="text-sm text-gray-600">
+                                {item.damage_type} - {item.damage_level}
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium text-red-600">
-                              -₺{item.estimated_cost?.toLocaleString()}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              %{(item.depreciation * 100).toFixed(1)} etki
+                            <div className="text-right">
+                              <div className="font-medium text-red-600">
+                                -₺{item.estimated_cost?.toLocaleString()}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                %{(item.depreciation * 100).toFixed(1)} etki
+                              </div>
                             </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
             {/* AI Analysis */}
             <Card>
@@ -781,8 +908,28 @@ function DetailedEstimateContent() {
                   </div>
                 </div>
 
-                <div className="pt-2 border-t text-xs text-gray-500">
-                  Analiz Tarihi: {result.analiz_tarihi} | Kaynak: {result.veri_kaynagi}
+                <div className="pt-4 space-y-4">
+                  <Button
+                    onClick={handleSave}
+                    className="w-full"
+                    disabled={saving}
+                  >
+                    {saving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Kaydediliyor...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Panele Kaydet
+                      </>
+                    )}
+                  </Button>
+                  <div className="border-t text-xs text-gray-500 pt-2">
+                    Analiz Tarihi: {result.analiz_tarihi} | Kaynak:{' '}
+                    {result.veri_kaynagi}
+                  </div>
                 </div>
               </CardContent>
             </Card>

@@ -77,12 +77,62 @@ class CarMarketScraper:
             # In real implementation, this would make actual HTTP requests
             # For now, we'll use estimation based on common Turkish car prices
             
+            # Updated 2025 price ranges in Turkish Lira
             price_ranges = {
-                'toyota': {'corolla': 500000, 'camry': 800000, 'yaris': 400000},
-                'volkswagen': {'polo': 450000, 'golf': 600000, 'passat': 750000},
-                'renault': {'clio': 350000, 'megane': 500000, 'fluence': 450000},
-                'hyundai': {'i20': 400000, 'elantra': 550000, 'tucson': 900000},
-                'ford': {'focus': 500000, 'fiesta': 380000, 'mondeo': 650000}
+                'toyota': {
+                    'corolla': 1200000,
+                    'camry': 2000000,
+                    'yaris': 900000,
+                    'rav4': 2200000
+                },
+                'volkswagen': {
+                    'polo': 950000,
+                    'golf': 1400000,
+                    'passat': 1800000,
+                    'tiguan': 2100000
+                },
+                'renault': {
+                    'clio': 850000,
+                    'megane': 1200000,
+                    'fluence': 1000000,
+                    'talisman': 1600000
+                },
+                'hyundai': {
+                    'i20': 900000,
+                    'i30': 1100000,
+                    'elantra': 1300000,
+                    'tucson': 1900000
+                },
+                'ford': {
+                    'focus': 1100000,
+                    'fiesta': 850000,
+                    'mondeo': 1500000,
+                    'kuga': 1800000
+                },
+                'fiat': {
+                    'egea': 850000,
+                    'palio': 250000,
+                    'doblo': 750000,
+                    'linea': 450000
+                },
+                'honda': {
+                    'civic': 1300000,
+                    'city': 1100000,
+                    'accord': 1800000,
+                    'cr-v': 2000000
+                },
+                'bmw': {
+                    '3-series': 2500000,
+                    '5-series': 3500000,
+                    'x3': 3000000,
+                    'x5': 4000000
+                },
+                'mercedes': {
+                    'c-class': 2800000,
+                    'e-class': 3800000,
+                    'a-class': 2000000,
+                    'gla': 2500000
+                }
             }
             
             marka_lower = marka.lower()
@@ -90,9 +140,26 @@ class CarMarketScraper:
             
             if marka_lower in price_ranges and model_lower in price_ranges[marka_lower]:
                 base_price = price_ranges[marka_lower][model_lower]
-                # Adjust for year (newer cars are more expensive)
+                # Updated depreciation calculation
                 current_year = datetime.now().year
-                year_factor = max(0.3, 1 - (current_year - yil) * 0.08)
+                age = current_year - yil
+                
+                # Non-linear depreciation model
+                if age <= 1:
+                    year_factor = 0.85  # 15% depreciation in first year
+                elif age <= 3:
+                    year_factor = 0.85 * (0.9 ** (age - 1))  # 10% per year for years 2-3
+                elif age <= 5:
+                    year_factor = 0.85 * (0.9 ** 2) * (0.85 ** (age - 3))  # 15% per year for years 4-5
+                elif age <= 10:
+                    year_factor = 0.85 * (0.9 ** 2) * (0.85 ** 2) * (0.8 ** (age - 5))  # 20% per year for years 6-10
+                else:
+                    year_factor = max(0.15, 0.85 * (0.9 ** 2) * (0.85 ** 2) * (0.8 ** 5) * (0.95 ** (age - 10)))  # 5% per year after 10 years, minimum 15% of original value
+                
+                # Additional market factors
+                if current_year >= 2024:  # Account for high inflation in Turkish market
+                    base_price = base_price * 1.4  # 40% markup for recent market conditions
+                
                 return int(base_price * year_factor)
             
             # Fallback estimation
