@@ -126,7 +126,11 @@ function DetailedEstimateContent() {
         aiSummary: result.rapor
       };
 
-      await vehicleService.saveVehicle(vehicleData);
+      const savedVehicle = await vehicleService.saveVehicle({
+        ...vehicleData,
+        engineSize: parseFloat(formData.motor_hacmi) || undefined,
+        enginePower: parseInt(formData.motor_gucu) || undefined
+      });
       toast({
         title: 'Araç kaydedildi!',
         description: 'Araç panonuza eklendi.'

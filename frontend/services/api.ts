@@ -1,8 +1,8 @@
-import type { BackendUser } from '@/types';
+import { auth } from '@/lib/auth';
+import type { BackendUser, BackendVehicle } from '@/types';
 
 // Real API Service - Connects to FastAPI backend
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 interface ApiResponse<T> {
   data?: T;
@@ -22,7 +22,7 @@ async function apiCall<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE_URL}${endpoint}`;
+  const url = `${API_URL}${endpoint}`;
 
   const defaultHeaders = {
     'Content-Type': 'application/json'
@@ -341,34 +341,109 @@ export const vehicleService = {
   },
 
   async getVehicles() {
-    // Since backend requires kullanici_id and we don't have real auth,
-    // return empty array for now
-    return [];
+    const user = await auth.getProfile();
+    if (!user) {
+      throw new Error('Giriş yapmanız gerekiyor');
+    }
+    const response = await fetch(`${API_URL}/kullanici/${user.id}/araclar`, {
+      headers: await auth.getAuthHeaders()
+    });
+    if (!response.ok) {
+      throw new Error('Araçlar yüklenemedi');
+    }
+    const data = await response.json();
+    return data.map((vehicle: BackendVehicle) => ({
+      id: vehicle.id.toString(),
+      brand: vehicle.marka,
+      model: vehicle.model,
+      year: vehicle.yil,
+      km: vehicle.kilometre,
+      damageStatus: vehicle.hasar_durumu,
+      fuelType: vehicle.yakit_tipi,
+      transmission: vehicle.vites_tipi,
+      color: vehicle.renk,
+      estimatedPrice: 0, // Will be updated with latest estimate
+      aiSummary: vehicle.notlar || '',
+      createdAt: vehicle.kayit_tarihi,
+      updatedAt: vehicle.guncelleme_tarihi
+    }));
   },
 
   async saveVehicle(vehicleData: any) {
-    // Since we don't have real user management yet, we'll mock this
-    // but the structure is ready for when backend auth is implemented
-    const mockVehicle = {
-      id: Date.now().toString(),
-      userId: '1',
-      brand: vehicleData.brand,
+    const user = await auth.getProfile();
+    if (!user) {
+      throw new Error('Giriş yapmanız gerekiyor');
+    }
+
+    // AracOlustur model format
+    const requestData = {
+      arac_adi: `${vehicleData.brand} ${vehicleData.model} ${vehicleData.year}`,
+      marka: vehicleData.brand,
       model: vehicleData.model,
-      year: vehicleData.year,
-      km: vehicleData.km,
-      damageStatus: vehicleData.damageStatus,
-      estimatedPrice: vehicleData.estimatedPrice,
-      aiSummary: vehicleData.aiSummary,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      yil: vehicleData.year,
+      kilometre: vehicleData.km,
+      yakit_tipi: vehicleData.fuelType || 'Benzin',
+      vites_tipi: vehicleData.transmission || 'Manuel',
+      hasar_durumu: vehicleData.damageStatus,
+      renk: vehicleData.color || 'Belirtilmemiş',
+      motor_hacmi: vehicleData.engineSize || null,
+      motor_gucu: vehicleData.enginePower || null,
+      notlar: vehicleData.aiSummary
     };
 
-    return mockVehicle;
+    try {
+      const response = await fetch(`${API_URL}/kullanici/${user.id}/arac`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(await auth.getAuthHeaders())
+        },
+        body: JSON.stringify(requestData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const savedVehicle = await response.json();
+      return {
+        id: savedVehicle.id.toString(),
+        brand: savedVehicle.marka,
+        model: savedVehicle.model,
+        year: savedVehicle.yil,
+        km: savedVehicle.kilometre,
+        damageStatus: savedVehicle.hasar_durumu,
+        fuelType: savedVehicle.yakit_tipi,
+        transmission: savedVehicle.vites_tipi,
+        color: savedVehicle.renk,
+        estimatedPrice: vehicleData.estimatedPrice,
+        aiSummary: savedVehicle.notlar || '',
+        createdAt: savedVehicle.kayit_tarihi,
+        updatedAt: savedVehicle.guncelleme_tarihi
+      };
+    } catch (error) {
+      console.error('Error saving vehicle:', error);
+      throw error;
+    }
   },
 
   async deleteVehicle(id: string) {
-    // Mock implementation until backend auth is ready
-    return { success: true };
+    const user = await auth.getProfile();
+    if (!user) {
+      throw new Error('Giriş yapmanız gerekiyor');
+    }
+
+    const response = await fetch(`${API_URL}/kullanici/${user.id}/arac/${id}`, {
+      method: 'DELETE',
+      headers: await auth.getAuthHeaders()
+    });
+
+    if (!response.ok) {
+      throw new Error('Araç silinemedi');
+    }
+
+    const result = await response.json();
+    return { success: true, message: result.message };
   },
 
   async recalculatePrice(id: string) {
@@ -408,5 +483,5 @@ export const systemService = {
 };
 
 console.log('🚀 Real API Service initialized');
-console.log('🌐 Backend URL:', API_BASE_URL);
+console.log('🌐 Backend URL:', API_URL);
 console.log('🔍 Use browser console to monitor API calls');
