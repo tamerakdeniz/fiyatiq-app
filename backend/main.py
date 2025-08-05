@@ -1,19 +1,16 @@
-"""
-Akıllı Araç Fiyat Tahminleme API
+"Akıllı Araç Fiyat Tahminleme API"
 Bu uygulama, kullanıcının girdiği araç bilgilerine göre
 LangChain ve Gemini AI kullanarak anlık fiyat tahmini yapar.
-"""
+"
 
 import json
 import os
 import re
-import requests
 from datetime import datetime
 from typing import List, Optional
-from bs4 import BeautifulSoup
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
@@ -27,15 +24,14 @@ app = FastAPI(
     description="""
     ## 🚀 Gelişmiş Araç Değerleme Sistemi
     
-    Bu API, **Gemini AI**, **LangChain** ve **Google Web Search** teknolojilerini kullanarak anlık araç fiyat tahmini yapar.
+    Bu API, **Gemini AI** ve **LangChain** teknolojilerini kullanarak anlık araç fiyat tahmini yapar.
     
     ### ✨ Özellikler
     * 🎯 **Anlık Fiyat Tahmini** - Güncel pazar verilerine dayalı
     * 🧠 **Yapay Zeka Analizi** - Gemini AI ile akıllı değerlendirme
     * 📊 **Detaylı Raporlama** - Hasar durumuna göre değer kaybı analizi
-    * 🌐 **Web Arama Entegrasyonu** - Güncel piyasa fiyatlarını referans alır
     """,
-    version="3.0.0",
+    version="5.0.0",
 )
 
 # Load environment variables
@@ -77,11 +73,11 @@ class AracBilgileri(BaseModel):
     yakit_tipi: str
     vites_tipi: str
     il: str
+    motor_hacmi: Optional[float] = None
+    motor_gucu: Optional[int] = None
 
 class DetayliAracBilgileri(AracBilgileri):
     renk: str
-    motor_hacmi: Optional[float] = None
-    motor_gucu: Optional[int] = None
     ekstra_bilgiler: Optional[str] = None
     hasar_detaylari: List[HasarDetayi] = []
 
@@ -104,80 +100,65 @@ class FiyatTahminParser(BaseOutputParser):
                 return json.loads(cleaned_text[json_start:json_end])
         except Exception:
             pass
-        # Fallback regex parsing
-        min_fiyat = int(re.search(r'min.*?(\d+)', text, re.IGNORECASE).group(1) or 0)
-        max_fiyat = int(re.search(r'max.*?(\d+)', text, re.IGNORECASE).group(1) or 0)
-        ortalama_fiyat = int(re.search(r'ortalama.*?(\d+)', text, re.IGNORECASE).group(1) or 0)
+        min_fiyat_match = re.search(r'"tahmini_fiyat_min":\s*(\d+)', text)
+        max_fiyat_match = re.search(r'"tahmini_fiyat_max":\s*(\d+)', text)
+        ortalama_fiyat_match = re.search(r'"ortalama_fiyat":\s*(\d+)', text)
+        min_fiyat = int(min_fiyat_match.group(1)) if min_fiyat_match else 0
+        max_fiyat = int(max_fiyat_match.group(1)) if max_fiyat_match else 0
+        ortalama_fiyat = int(ortalama_fiyat_match.group(1)) if ortalama_fiyat_match else 0
         return {
             "tahmini_fiyat_min": min_fiyat, "tahmini_fiyat_max": max_fiyat, "ortalama_fiyat": ortalama_fiyat,
-            "rapor": text, "pazar_analizi": "Pazar analizi ayrıştırılamadı."
+            "rapor": "Rapor ayrıştırılamadı. Ham metin: " + text, 
+            "pazar_analizi": "Pazar analizi ayrıştırılamadı."
         }
 
 # LangChain Prompt Templates
 hizli_tahmin_prompt = PromptTemplate.from_template(
     """Sen bir otomotiv uzmanısın ve Türkiye'deki ikinci el araç piyasasını çok iyi biliyorsun.
     Aşağıdaki araç için güncel pazar değerini hızlıca analiz et ve bir fiyat aralığı sun.
-    ARAÇ BİLGİLERİ: Marka: {marka}, Model: {model}, Yıl: {yil}, Kilometre: {kilometre} km, Yakıt: {yakit_tipi}, Vites: {vites_tipi}, İl: {il}.
-    GÖREV: Minimum, maksimum ve ortalama fiyat içeren bir JSON yanıtı oluştur. Fiyatı etkileyen ana faktörleri bir cümleyle özetle.
-    JSON FORMATI: {{'tahmini_fiyat_min': int, 'tahmini_fiyat_max': int, 'ortalama_fiyat': int, 'rapor': str, 'pazar_analizi': str}}
-    Önemli: Yanıtın sadece JSON formatında olsun, başka açıklama ekleme."""
+    ARAÇ BİLGİLERİ: Marka: {marka}, Model: {model}, Yıl: {yil}, Kilometre: {kilometre} km, Yakıt: {yakit_tipi}, Vites: {vites_tipi}, İl: {il}, Motor Hacmi: {motor_hacmi}L, Motor Gücü: {motor_gucu}HP.
+    GÖREV: 
+    1.  Bu araç için Türkiye pazarında güncel ve gerçekçi bir fiyat aralığı (min, max, ortalama) belirle.
+    2.  **Rapor Alanı (HTML):** Fiyatı etkileyen en önemli 2-3 faktörü (örn: modelin popülerliği, kilometre durumu) `<strong>` etiketleriyle vurgulayarak kısaca açıkla.
+    3.  **Pazar Analizi Alanı (HTML):** Bu modelin genel piyasa durumu hakkında 1-2 cümlelik bir yorum yap.
+
+    JSON FORMATI: {{'tahmini_fiyat_min': int, 'tahmini_fiyat_max': int, 'ortalama_fiyat': int, 'rapor': "<p>Rapor metni...</p>", 'pazar_analizi': "<p>Analiz metni...</p>"}}
+    Önemli: Yanıtın sadece JSON formatında olsun ve `rapor` ile `pazar_analizi` alanları geçerli HTML içermelidir."""
 )
 
 detayli_tahmin_prompt = PromptTemplate.from_template(
     """Sen bir otomotiv uzmanısın ve Türkiye'deki ikinci el araç piyasasını çok iyi biliyorsun.
-    GÖREV: Aşağıdaki bilgilere dayanarak detaylı bir araç fiyat analizi yap.
+    GÖREV: Sana verilen referans fiyattan yola çıkarak, aracın ek detaylarına göre fiyattaki değişimleri hesapla ve detaylı bir rapor oluştur.
     
-    1.  **Piyasa Fiyatı Belirleme:**
-        *   Verilen araç bilgileri: {marka} {model} {yil}.
-        *   Bu aracın hasarsız ve ortalama kilometredeki güncel Türkiye piyasa fiyatı referans olarak **{piyasa_fiyati} TL** bulunmuştur.
+    REFERANS BİLGİLER:
+    *   Aracın modeli: {marka} {model} {yil}
+    *   Bu aracın hasarsız ve ortalama kilometredeki piyasa değeri **{referans_fiyat} TL** olarak belirlendi.
 
-    2.  **Değer Kaybı Hesaplama:**
-        *   Aracın bilgileri: Kilometre: {kilometre} km, Renk: {renk}, İl: {il}, Motor: {motor_hacmi}L {motor_gucu}HP, Ekstra Bilgiler: {ekstra_bilgiler}.
-        *   Hasar Listesi: {hasar_listesi}
-        *   Bu listedeki her bir hasarın (parça ve durum) değer kaybını ayrı ayrı hesapla. Kilometre, renk gibi diğer faktörlerin etkisini de ekle.
+    DEĞERLENDİRİLECEK EK DETAYLAR:
+    *   **Kilometre:** {kilometre} km
+    *   **Hasar Listesi:** {hasar_listesi}
+    *   **Diğer Faktörler:** Renk ({renk}), İl ({il}), Ekstra Bilgiler ({ekstra_bilgiler}).
 
-    3.  **Nihai Fiyat Tahmini:**
-        *   Referans piyasa fiyatından toplam değer kaybını düşerek aracın nihai fiyat aralığını (minimum, maksimum, ortalama) hesapla.
+HESAPLAMA VE RAPORLAMA (HTML FORMATINDA):
+    1.  **Değer Kaybı/Artışı Hesapla:** Belirlenen referans fiyattan başlayarak, yukarıdaki 'DEĞERLENDİRİLECEK EK DETAYLAR' bölümündeki her bir faktörün fiyata etkisini TL cinsinden hesapla.
+    2.  **Nihai Fiyatı Belirle:** Referans fiyattan toplam değer kayıplarını düşüp, artışları ekleyerek aracın yeni nihai fiyat aralığını (minimum, maksimum, ortalama) hesapla.
+    3.  **Rapor Oluştur:**
+        *   `<h4>Referans Fiyat</h4>` başlığı altında başlangıç fiyatını belirt.
+        *   `<h4>Değer Kaybı/Artışı Analizi</h4>` başlığı altında, değerlendirdiğin her faktörü `<li><strong>Faktör Adı:</strong> Açıklama ve +/- TL Etkisi</li>` şeklinde listele.
+        *   `<h4>Nihai Fiyat Tahmini</h4>` başlığı altında ulaştığın sonuçları özetle.
+    4.  **Pazar Analizi Oluştur:** Aracın modelinin genel pazar durumunu (popülerlik, arz-talep) özetle.
 
-    4.  **Raporlama:**
-        *   **Rapor:** Değer kaybı hesaplamalarını detaylı olarak açıkla. Her bir hasarın ve diğer faktörlerin fiyata etkisini TL cinsinden belirt. Adım adım nihai fiyata nasıl ulaştığını anlat.
-        *   **Pazar Analizi:** Aracın modelinin genel pazar durumunu (popülerlik, arz-talep) ve gelecekteki değer beklentilerini özetle.
-
-    JSON FORMATI: {{'tahmini_fiyat_min': int, 'tahmini_fiyat_max': int, 'ortalama_fiyat': int, 'rapor': str, 'pazar_analizi': str}}
-    Önemli: Yanıtın sadece JSON formatında olsun, başka açıklama ekleme."""
-)
+JSON FORMATI: {{"tahmini_fiyat_min": int, "tahmini_fiyat_max": int, "ortalama_fiyat": int, "rapor": "<h4>...</h4><ul><li>...</li></ul>", "pazar_analizi": "<p>...</p>"}}
+Önemli: Yanıtın sadece JSON formatında olsun ve `rapor` ile `pazar_analizi` alanları geçerli HTML içermelidir."")
 
 # LangChain Chains
 hizli_tahmin_chain = hizli_tahmin_prompt | llm | FiyatTahminParser()
 detayli_tahmin_chain = detayli_tahmin_prompt | llm | FiyatTahminParser()
 
-# Web Scraping Function
-def search_google_and_get_prices(query: str) -> int:
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
-        response = requests.get(f"https://www.google.com/search?q={query}", headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Google search results are complex, this is a simplified approach
-        # It might need adjustments based on actual Google HTML structure
-        price_texts = soup.get_text()
-        
-        fiyatlar = re.findall(r'(\d[\d.,]*\d)\s*TL', price_texts)
-        temiz_fiyatlar = [int(re.sub(r'[.,]', '', f)) for f in fiyatlar if f]
-        
-        if temiz_fiyatlar:
-            return int(sum(temiz_fiyatlar) / len(temiz_fiyatlar))
-        return 1000000  # Default if no prices found
-    except Exception:
-        return 1000000 # Default on error
-
 # API Endpoints
 @app.get("/")
 async def root():
-    return {"message": "FiyatIQ API v3.0 çalışıyor!"}
+    return {"message": "FiyatIQ API v5.0 çalışıyor!"}
 
 @app.post("/hizli-tahmin", response_model=TahminSonucu)
 async def hizli_fiyat_tahmini(arac: AracBilgileri):
@@ -190,19 +171,24 @@ async def hizli_fiyat_tahmini(arac: AracBilgileri):
 @app.post("/detayli-tahmin", response_model=TahminSonucu)
 async def detayli_fiyat_tahmini(arac: DetayliAracBilgileri):
     try:
-        # 1. Web'de hasarsız piyasa fiyatını araştır
-        arama_sorgusu = f"{arac.yil} {arac.marka} {arac.model} hasarsız fiyatları"
-        piyasa_fiyati_referans = search_google_and_get_prices(arama_sorgusu)
+        # 1. Adım: Güvenilir bir referans fiyat almak için önce "Hızlı Analiz" zincirini çağır.
+        hizli_analiz_sonucu = await hizli_tahmin_chain.ainvoke(arac.dict())
+        referans_fiyat = hizli_analiz_sonucu.get('ortalama_fiyat', 0)
 
-        # 2. Hasar listesini formatla
-        hasar_listesi_str = ", ".join([f"{h.parca}: {h.durum}" for h in arac.hasar_detaylari]) or "Hasar yok"
+        if referans_fiyat == 0:
+            raise HTTPException(status_code=500, detail="Referans fiyat alınamadı, detaylı analiz yapılamıyor.")
 
-        # 3. Geliştirilmiş prompt ile AI'ı çağır
-        result = await detayli_tahmin_chain.ainvoke({
+        # 2. Adım: Hasar listesini formatla.
+        hasar_listesi_str = ", ".join([f"{h.parca}: {h.durum}" for h in arac.hasar_detaylari if h.parca and h.durum]) or "Hasar yok"
+
+        # 3. Adım: Elde edilen referans fiyatı ve diğer detayları kullanarak "Detaylı Analiz" zincirini çağır.
+        detayli_analiz_input = {
             **arac.dict(),
-            "piyasa_fiyati": f"{piyasa_fiyati_referans:,}",
+            "referans_fiyat": f"{referans_fiyat:,}",
             "hasar_listesi": hasar_listesi_str
-        })
+        }
+        
+        result = await detayli_tahmin_chain.ainvoke(detayli_analiz_input)
 
         return TahminSonucu(**result, analiz_tarihi=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     except Exception as e:
@@ -210,4 +196,4 @@ async def detayli_fiyat_tahmini(arac: DetayliAracBilgileri):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "version": "3.0.0"}
+    return {"status": "healthy", "version": "5.0.0"}
