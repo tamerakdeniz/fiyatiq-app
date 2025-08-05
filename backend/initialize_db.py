@@ -3,11 +3,18 @@ Database Initialization Script
 Creates all tables and populates initial data
 """
 
-from database import create_tables, SessionLocal, AracParcasi, HasarTipi
+from database import AracParcasi, HasarTipi, SessionLocal, create_tables
+
 
 def main():
     """Initialize database with tables and data"""
     print("🚀 Initializing FiyatIQ Database...")
+    
+    # Remove existing database file to ensure clean state with new schema
+    import os
+    if os.path.exists("fiyatiq.db"):
+        os.remove("fiyatiq.db")
+        print("🗑️ Removed existing database for clean initialization")
     
     # Create all tables
     print("\n📊 Creating database tables...")

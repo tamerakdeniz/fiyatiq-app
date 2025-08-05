@@ -44,6 +44,14 @@ from models import (
     AracParcasiYanit, HasarTipiYanit, PazarVerisiYanit
 )
 
+# Authentication imports
+from auth import (
+    UserRegister, UserLogin, TokenResponse, UserProfile, PasswordChange,
+    register_user, authenticate_user, get_current_user, get_current_user_optional,
+    create_access_token, create_refresh_token, change_password,
+    SecurityLog, rate_limiter, sanitize_input
+)
+
 # Çevre değişkenlerini yükle
 load_dotenv()
 
@@ -889,6 +897,272 @@ async def get_pazar_verileri(marka: str, model: str, yil: int, db: Session = Dep
         pazar_verisi = save_market_data_to_db(db, market_data)
     
     return pazar_verisi
+
+# ===== SECURE AUTHENTICATION ENDPOINTS =====
+
+@app.post("/auth/register", response_model=TokenResponse, tags=["🔐 Authentication"])
+async def register(user_data: UserRegister, request: Request, db: Session = Depends(get_db)):
+    """
+    ## 🔐 Secure User Registration
+    
+    Register a new user with strong password requirements and security features.
+    
+    ### 🛡️ Security Features:
+    - **Password Hashing**: Bcrypt with salt
+    - **Input Validation**: Email, password strength, name validation
+    - **Rate Limiting**: Prevents spam registrations
+    - **Security Logging**: All registration attempts logged
+    - **Email Uniqueness**: Prevents duplicate accounts
+    
+    ### 📋 Password Requirements:
+    - At least 8 characters long
+    - Contains uppercase and lowercase letters
+    - Contains at least one digit
+    - Contains at least one special character
+    
+    **Returns**: JWT tokens for immediate login after registration
+    """
+    client_ip = request.client.host
+    
+    # Rate limiting check
+    if not rate_limiter.is_allowed(f"register_{client_ip}", max_attempts=5, window_minutes=60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many registration attempts. Please try again later."
+        )
+    
+    try:
+        # Sanitize inputs
+        user_data.ad = sanitize_input(user_data.ad)
+        user_data.soyad = sanitize_input(user_data.soyad)
+        if user_data.telefon:
+            user_data.telefon = sanitize_input(user_data.telefon)
+        if user_data.sehir:
+            user_data.sehir = sanitize_input(user_data.sehir)
+        
+        # Register user
+        new_user = register_user(db, user_data)
+        
+        # Create tokens
+        access_token = create_access_token(data={"sub": str(new_user.id)})
+        refresh_token = create_refresh_token(data={"sub": str(new_user.id)})
+        
+        # Log registration
+        SecurityLog.log_registration(user_data.email, client_ip)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=60 * 24,  # 24 hours
+            user={
+                "id": new_user.id,
+                "ad": new_user.ad,
+                "soyad": new_user.soyad,
+                "email": new_user.email,
+                "telefon": new_user.telefon,
+                "sehir": new_user.sehir
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
+        )
+
+@app.post("/auth/login", response_model=TokenResponse, tags=["🔐 Authentication"])
+async def login(user_credentials: UserLogin, request: Request, db: Session = Depends(get_db)):
+    """
+    ## 🔐 Secure User Login
+    
+    Authenticate user with email and password.
+    
+    ### 🛡️ Security Features:
+    - **Account Lockout**: Protection against brute force attacks
+    - **Failed Attempt Tracking**: Monitors suspicious activity
+    - **Rate Limiting**: Prevents automated attacks
+    - **Security Logging**: All login attempts logged
+    - **JWT Tokens**: Secure stateless authentication
+    
+    ### 🔒 Account Protection:
+    - Account locks after 5 failed attempts
+    - 30-minute lockout period
+    - Automatic unlock after timeout
+    
+    **Returns**: JWT access and refresh tokens
+    """
+    client_ip = request.client.host
+    
+    # Rate limiting check
+    if not rate_limiter.is_allowed(f"login_{client_ip}", max_attempts=20, window_minutes=15):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many login attempts. Please try again later."
+        )
+    
+    try:
+        # Authenticate user
+        user = authenticate_user(db, user_credentials.email, user_credentials.password)
+        
+        if not user:
+            SecurityLog.log_login_attempt(user_credentials.email, False, client_ip)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect email or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Create tokens
+        access_token = create_access_token(data={"sub": str(user.id)})
+        refresh_token = create_refresh_token(data={"sub": str(user.id)})
+        
+        # Log successful login
+        SecurityLog.log_login_attempt(user_credentials.email, True, client_ip)
+        
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            token_type="bearer",
+            expires_in=60 * 24,  # 24 hours
+            user={
+                "id": user.id,
+                "ad": user.ad,
+                "soyad": user.soyad,
+                "email": user.email,
+                "telefon": user.telefon,
+                "sehir": user.sehir
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
+
+@app.get("/auth/profile", response_model=UserProfile, tags=["🔐 Authentication"])
+async def get_profile(current_user: Kullanici = Depends(get_current_user)):
+    """
+    ## 👤 Get User Profile
+    
+    Get current authenticated user's profile information.
+    
+    **Requires**: Valid JWT token in Authorization header
+    **Returns**: User profile data (passwords are never returned)
+    """
+    return UserProfile(
+        id=current_user.id,
+        ad=current_user.ad,
+        soyad=current_user.soyad,
+        email=current_user.email,
+        telefon=current_user.telefon,
+        sehir=current_user.sehir,
+        kayit_tarihi=current_user.kayit_tarihi,
+        son_giris=current_user.son_giris,
+        email_verified=current_user.email_verified
+    )
+
+@app.put("/auth/change-password", tags=["🔐 Authentication"])
+async def change_user_password(
+    password_data: PasswordChange,
+    request: Request,
+    current_user: Kullanici = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    ## 🔒 Change Password
+    
+    Change user's password with current password verification.
+    
+    ### 🛡️ Security Features:
+    - **Current Password Verification**: Must provide current password
+    - **Strong Password Requirements**: Same as registration
+    - **Security Logging**: Password changes are logged
+    - **Token Invalidation**: Optionally invalidate existing tokens
+    
+    **Requires**: Valid JWT token and current password
+    """
+    client_ip = request.client.host
+    
+    try:
+        # Change password
+        change_password(db, current_user, password_data)
+        
+        # Log password change
+        SecurityLog.log_password_change(current_user.email, client_ip)
+        
+        return {"message": "Password changed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Password change failed: {str(e)}"
+        )
+
+@app.post("/auth/refresh", response_model=TokenResponse, tags=["🔐 Authentication"])
+async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
+    """
+    ## 🔄 Refresh Access Token
+    
+    Generate new access token using refresh token.
+    
+    **Requires**: Valid refresh token
+    **Returns**: New access and refresh tokens
+    """
+    try:
+        from auth import verify_token
+        
+        # Verify refresh token
+        payload = verify_token(refresh_token)
+        
+        if payload.get("type") != "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type"
+            )
+        
+        user_id = payload.get("sub")
+        user = db.query(Kullanici).filter(Kullanici.id == int(user_id)).first()
+        
+        if not user or not user.aktif:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive"
+            )
+        
+        # Create new tokens
+        new_access_token = create_access_token(data={"sub": str(user.id)})
+        new_refresh_token = create_refresh_token(data={"sub": str(user.id)})
+        
+        return TokenResponse(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+            token_type="bearer",
+            expires_in=60 * 24,
+            user={
+                "id": user.id,
+                "ad": user.ad,
+                "soyad": user.soyad,
+                "email": user.email,
+                "telefon": user.telefon,
+                "sehir": user.sehir
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Token refresh failed: {str(e)}"
+        )
 
 # ===== KULLANICI YÖNETİMİ ENDPOINT'LERİ =====
 

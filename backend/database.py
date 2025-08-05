@@ -21,11 +21,15 @@ class Kullanici(Base):
     ad = Column(String(50), nullable=False)
     soyad = Column(String(50), nullable=False)
     email = Column(String(100), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)  # Hashed password
     telefon = Column(String(20), nullable=True)
     sehir = Column(String(30), nullable=True)
     kayit_tarihi = Column(DateTime, default=datetime.utcnow)
     son_giris = Column(DateTime, nullable=True)
     aktif = Column(Boolean, default=True)
+    email_verified = Column(Boolean, default=False)  # Email verification
+    failed_login_attempts = Column(Integer, default=0)  # Security feature
+    account_locked_until = Column(DateTime, nullable=True)  # Account lockout
     
     # İlişkiler
     araclar = relationship("KullaniciAraci", back_populates="kullanici")

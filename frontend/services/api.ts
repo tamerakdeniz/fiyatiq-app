@@ -112,62 +112,191 @@ interface EstimationResponse {
   tahmin_id?: number;
 }
 
-// Auth Service
+// Auth Service with Secure Implementation
 export const authService = {
   async signin(email: string, password: string) {
-    // Note: Backend doesn't have authentication yet, but we'll prepare the structure
-    // For now, we'll create a mock user but still try to reach the backend
     try {
-      // Try to ping the backend first
-      await apiCall('/health');
-      
-      // Since there's no auth in backend yet, create a mock response
-      const mockUser = {
-        id: 1,
-        name: 'Demo User',
-        email: email,
-      };
+      const response = await apiCall<{
+        access_token: string;
+        refresh_token: string;
+        token_type: string;
+        expires_in: number;
+        user: {
+          id: number;
+          ad: string;
+          soyad: string;
+          email: string;
+          telefon?: string;
+          sehir?: string;
+        };
+      }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+      });
+
+      // Store tokens securely
+      localStorage.setItem('access_token', response.access_token);
+      localStorage.setItem('refresh_token', response.refresh_token);
       
       return {
-        token: 'demo-token',
-        user: mockUser,
+        token: response.access_token,
+        user: {
+          id: response.user.id,
+          name: `${response.user.ad} ${response.user.soyad}`,
+          email: response.user.email,
+          telefon: response.user.telefon,
+          sehir: response.user.sehir,
+        },
       };
     } catch (error) {
-      throw new ApiError('Unable to connect to backend server. Please ensure the backend is running.');
+      throw error;
     }
   },
 
   async signup(name: string, email: string, password: string) {
     try {
-      await apiCall('/health');
-      
-      const mockUser = {
-        id: 1,
-        name: name,
-        email: email,
-      };
+      // Split name into first and last name
+      const nameParts = name.trim().split(' ');
+      const ad = nameParts[0] || '';
+      const soyad = nameParts.slice(1).join(' ') || '';
+
+      const response = await apiCall<{
+        access_token: string;
+        refresh_token: string;
+        token_type: string;
+        expires_in: number;
+        user: {
+          id: number;
+          ad: string;
+          soyad: string;
+          email: string;
+          telefon?: string;
+          sehir?: string;
+        };
+      }>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ ad, soyad, email, password }),
+      });
+
+      // Store tokens securely
+      localStorage.setItem('access_token', response.access_token);
+      localStorage.setItem('refresh_token', response.refresh_token);
       
       return {
-        token: 'demo-token',
-        user: mockUser,
+        token: response.access_token,
+        user: {
+          id: response.user.id,
+          name: `${response.user.ad} ${response.user.soyad}`,
+          email: response.user.email,
+          telefon: response.user.telefon,
+          sehir: response.user.sehir,
+        },
       };
     } catch (error) {
-      throw new ApiError('Unable to connect to backend server. Please ensure the backend is running.');
+      throw error;
     }
   },
 
   async getProfile() {
     try {
-      await apiCall('/health');
-      
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new ApiError('No authentication token found');
+      }
+
+      const response = await apiCall<{
+        id: number;
+        ad: string;
+        soyad: string;
+        email: string;
+        telefon?: string;
+        sehir?: string;
+        kayit_tarihi: string;
+        son_giris?: string;
+        email_verified: boolean;
+      }>('/auth/profile', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
       return {
-        id: 1,
-        name: 'Demo User',
-        email: 'demo@demo.com',
-        createdAt: new Date().toISOString(),
+        id: response.id,
+        name: `${response.ad} ${response.soyad}`,
+        email: response.email,
+        telefon: response.telefon,
+        sehir: response.sehir,
+        createdAt: response.kayit_tarihi,
+        lastLogin: response.son_giris,
+        emailVerified: response.email_verified,
       };
     } catch (error) {
-      throw new ApiError('Unable to connect to backend server.');
+      // If token is invalid, clear it and redirect to login
+      if (error instanceof ApiError && error.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+      }
+      throw error;
+    }
+  },
+
+  async refreshToken() {
+    try {
+      const refreshToken = localStorage.getItem('refresh_token');
+      if (!refreshToken) {
+        throw new ApiError('No refresh token found');
+      }
+
+      const response = await apiCall<{
+        access_token: string;
+        refresh_token: string;
+        token_type: string;
+        expires_in: number;
+        user: any;
+      }>('/auth/refresh', {
+        method: 'POST',
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+
+      localStorage.setItem('access_token', response.access_token);
+      localStorage.setItem('refresh_token', response.refresh_token);
+
+      return response.access_token;
+    } catch (error) {
+      // Clear tokens if refresh fails
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      throw error;
+    }
+  },
+
+  async signout() {
+    // Clear local storage
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+  },
+
+  async changePassword(currentPassword: string, newPassword: string) {
+    try {
+      const token = localStorage.getItem('access_token');
+      if (!token) {
+        throw new ApiError('No authentication token found');
+      }
+
+      await apiCall('/auth/change-password', {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+
+      return { success: true };
+    } catch (error) {
+      throw error;
     }
   },
 };

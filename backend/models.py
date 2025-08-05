@@ -19,6 +19,7 @@ class KullaniciOlustur(BaseModel):
     ad: str = Field(..., min_length=2, max_length=50, description="Kullanıcının adı", example="Ahmet")
     soyad: str = Field(..., min_length=2, max_length=50, description="Kullanıcının soyadı", example="Yılmaz") 
     email: str = Field(..., description="Email adresi", example="ahmet.yilmaz@email.com")
+    password: str = Field(..., min_length=8, description="Güçlü şifre (en az 8 karakter)", example="SecurePass123!")
     telefon: Optional[str] = Field(None, max_length=20, description="Telefon numarası", example="0532 123 4567")
     sehir: Optional[str] = Field(None, max_length=30, description="Şehir", example="İstanbul")
     

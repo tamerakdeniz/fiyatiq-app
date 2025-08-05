@@ -14,5 +14,10 @@ beautifulsoup4==4.12.2
 requests==2.31.0
 selenium==4.15.0
 
+# Security dependencies
+bcrypt==4.1.2
+PyJWT==2.8.0
+python-multipart==0.0.6
+
 # Swagger/OpenAPI iyileştirmeleri
 fastapi-utils==0.2.1
