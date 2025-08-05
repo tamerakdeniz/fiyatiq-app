@@ -1,179 +1,205 @@
-"use client"
+'use client';
 
-import type React from "react"
+import type React from 'react';
 
-import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Separator } from "@/components/ui/separator"
-import { Loader2, User, Calendar, Shield, Trash2, AlertTriangle } from "lucide-react"
-import { Navbar } from "@/components/navbar"
-import { PrivateRoute } from "@/components/private-route"
-import { useAuth } from "@/contexts/auth-context"
-import { profileService, vehicleService } from "@/services/api"
-import { useToast } from "@/hooks/use-toast"
+import { Navbar } from '@/components/navbar';
+import { PrivateRoute } from '@/components/private-route';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Separator } from '@/components/ui/separator';
+import { useAuth } from '@/contexts/auth-context';
+import { useToast } from '@/hooks/use-toast';
+import { profileService, vehicleService } from '@/services/api';
+import {
+  AlertTriangle,
+  Calendar,
+  Loader2,
+  Shield,
+  Trash2,
+  User
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 interface ProfileData {
-  name: string
-  email: string
-  createdAt: string
+  name: string;
+  email: string;
+  createdAt: string;
 }
 
 function ProfileContent() {
-  const [profile, setProfile] = useState<ProfileData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState(false)
-  const [changingPassword, setChangingPassword] = useState(false)
-  const [deletingAccount, setDeletingAccount] = useState(false)
-  const [clearingVehicles, setClearingVehicles] = useState(false)
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [clearingVehicles, setClearingVehicles] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-  })
+    name: '',
+    email: ''
+  });
 
   const [passwordData, setPasswordData] = useState({
-    oldPassword: "",
-    newPassword: "",
-    confirmPassword: "",
-  })
+    oldPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const { user, signout } = useAuth()
-  const { toast } = useToast()
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const { user, signout } = useAuth();
+  const { toast } = useToast();
 
   useEffect(() => {
-    loadProfile()
-  }, [])
+    loadProfile();
+  }, []);
 
   const loadProfile = async () => {
     try {
-      setLoading(true)
-      const data = await profileService.getProfile()
-      setProfile(data)
+      setLoading(true);
+      const data = await profileService.getProfile();
+      setProfile(data);
       setFormData({
         name: data.name,
-        email: data.email,
-      })
+        email: data.email
+      });
     } catch (err: any) {
       toast({
-        title: "Error",
-        description: err.message || "Failed to load profile",
-        variant: "destructive",
-      })
+        title: 'Error',
+        description: err.message || 'Failed to load profile',
+        variant: 'destructive'
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setUpdating(true)
-    setErrors({})
+    e.preventDefault();
+    setUpdating(true);
+    setErrors({});
 
     try {
-      const updatedProfile = await profileService.updateProfile(formData)
-      setProfile(updatedProfile)
+      const updatedProfile = await profileService.updateProfile(formData);
+      setProfile(updatedProfile);
       toast({
-        title: "Profile updated",
-        description: "Your profile information has been saved.",
-      })
+        title: 'Profile updated',
+        description: 'Profil bilgileriniz kaydedildi.'
+      });
     } catch (err: any) {
-      setErrors({ profile: err.message || "Failed to update profile" })
+      setErrors({ profile: err.message || 'Failed to update profile' });
     } finally {
-      setUpdating(false)
+      setUpdating(false);
     }
-  }
+  };
 
   const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setChangingPassword(true)
-    setErrors({})
+    e.preventDefault();
+    setChangingPassword(true);
+    setErrors({});
 
     if (passwordData.newPassword !== passwordData.confirmPassword) {
-      setErrors({ password: "New passwords do not match" })
-      setChangingPassword(false)
-      return
+      setErrors({ password: 'New passwords do not match' });
+      setChangingPassword(false);
+      return;
     }
 
     if (passwordData.newPassword.length < 6) {
-      setErrors({ password: "New password must be at least 6 characters" })
-      setChangingPassword(false)
-      return
+      setErrors({ password: 'New password must be at least 6 characters' });
+      setChangingPassword(false);
+      return;
     }
 
     try {
-      await profileService.changePassword(passwordData.oldPassword, passwordData.newPassword)
-      setPasswordData({ oldPassword: "", newPassword: "", confirmPassword: "" })
+      await profileService.changePassword(
+        passwordData.oldPassword,
+        passwordData.newPassword
+      );
+      setPasswordData({
+        oldPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
       toast({
-        title: "Password changed",
-        description: "Your password has been updated successfully.",
-      })
+        title: 'Password changed',
+        description: 'Şifreniz başarıyla güncellendi.'
+      });
     } catch (err: any) {
-      setErrors({ password: err.message || "Failed to change password" })
+      setErrors({ password: err.message || 'Failed to change password' });
     } finally {
-      setChangingPassword(false)
+      setChangingPassword(false);
     }
-  }
+  };
 
   const handleClearVehicles = async () => {
-    if (!confirm("Are you sure you want to delete all your saved vehicles? This action cannot be undone.")) {
-      return
+    if (
+      !confirm(
+        'Are you sure you want to delete all your saved vehicles? This action cannot be undone.'
+      )
+    ) {
+      return;
     }
 
-    setClearingVehicles(true)
+    setClearingVehicles(true);
     try {
-      await vehicleService.clearAllVehicles()
+      await vehicleService.clearAllVehicles();
       toast({
-        title: "Vehicles cleared",
-        description: "All your saved vehicles have been deleted.",
-      })
+        title: 'Vehicles cleared',
+        description: 'Tüm kayıtlı araçlarınız silindi.'
+      });
     } catch (err: any) {
       toast({
-        title: "Error",
-        description: err.message || "Failed to clear vehicles",
-        variant: "destructive",
-      })
+        title: 'Error',
+        description: err.message || 'Failed to clear vehicles',
+        variant: 'destructive'
+      });
     } finally {
-      setClearingVehicles(false)
+      setClearingVehicles(false);
     }
-  }
+  };
 
   const handleDeleteAccount = async () => {
-    const confirmation = prompt('This will permanently delete your account and all data. Type "DELETE" to confirm:')
+    const confirmation = prompt(
+      'This will permanently delete your account and all data. Type "DELETE" to confirm:'
+    );
 
-    if (confirmation !== "DELETE") {
-      return
+    if (confirmation !== 'DELETE') {
+      return;
     }
 
-    setDeletingAccount(true)
+    setDeletingAccount(true);
     try {
-      await profileService.deleteAccount()
+      await profileService.deleteAccount();
       toast({
-        title: "Account deleted",
-        description: "Your account has been permanently deleted.",
-      })
-      signout()
+        title: 'Account deleted',
+        description: 'Hesabınız kalıcı olarak silindi.'
+      });
+      signout();
     } catch (err: any) {
       toast({
-        title: "Error",
-        description: err.message || "Failed to delete account",
-        variant: "destructive",
-      })
+        title: 'Error',
+        description: err.message || 'Failed to delete account',
+        variant: 'destructive'
+      });
     } finally {
-      setDeletingAccount(false)
+      setDeletingAccount(false);
     }
-  }
+  };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="h-8 w-8 animate-spin" />
       </div>
-    )
+    );
   }
 
   if (!profile) {
@@ -182,14 +208,16 @@ function ProfileContent() {
         <AlertTriangle className="h-4 w-4" />
         <AlertDescription>Failed to load profile information</AlertDescription>
       </Alert>
-    )
+    );
   }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Profile Settings</h1>
-        <p className="text-gray-600 mt-1">Manage your account information and preferences</p>
+        <h1 className="text-3xl font-bold">Profil Ayarları</h1>
+        <p className="text-gray-600 mt-1">
+          Hesap bilgilerinizi ve tercihlerinizi yönetin
+        </p>
       </div>
 
       {/* Profile Information */}
@@ -197,9 +225,11 @@ function ProfileContent() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            Personal Information
+            Kişisel Bilgiler
           </CardTitle>
-          <CardDescription>Update your basic account information</CardDescription>
+          <CardDescription>
+            Temel hesap bilgilerinizi güncelleyin
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateProfile} className="space-y-4">
@@ -210,11 +240,13 @@ function ProfileContent() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="name">Full Name</Label>
+              <Label htmlFor="name">Ad Soyad</Label>
               <Input
                 id="name"
                 value={formData.name}
-                onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+                onChange={e =>
+                  setFormData(prev => ({ ...prev, name: e.target.value }))
+                }
                 required
               />
             </div>
@@ -225,24 +257,29 @@ function ProfileContent() {
                 id="email"
                 type="email"
                 value={formData.email}
-                onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+                onChange={e =>
+                  setFormData(prev => ({ ...prev, email: e.target.value }))
+                }
                 required
               />
             </div>
 
             <div className="flex items-center gap-2 text-sm text-gray-600">
               <Calendar className="h-4 w-4" />
-              <span>Member since {new Date(profile.createdAt).toLocaleDateString()}</span>
+              <span>
+                Üye tarihi:{' '}
+                {new Date(profile.createdAt).toLocaleDateString('tr-TR')}
+              </span>
             </div>
 
             <Button type="submit" disabled={updating}>
               {updating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Updating...
+                  Güncelleniyor...
                 </>
               ) : (
-                "Update Profile"
+                'Profili Güncelle'
               )}
             </Button>
           </form>
@@ -272,7 +309,12 @@ function ProfileContent() {
                 id="oldPassword"
                 type="password"
                 value={passwordData.oldPassword}
-                onChange={(e) => setPasswordData((prev) => ({ ...prev, oldPassword: e.target.value }))}
+                onChange={e =>
+                  setPasswordData(prev => ({
+                    ...prev,
+                    oldPassword: e.target.value
+                  }))
+                }
                 required
               />
             </div>
@@ -283,7 +325,12 @@ function ProfileContent() {
                 id="newPassword"
                 type="password"
                 value={passwordData.newPassword}
-                onChange={(e) => setPasswordData((prev) => ({ ...prev, newPassword: e.target.value }))}
+                onChange={e =>
+                  setPasswordData(prev => ({
+                    ...prev,
+                    newPassword: e.target.value
+                  }))
+                }
                 required
               />
             </div>
@@ -294,7 +341,12 @@ function ProfileContent() {
                 id="confirmPassword"
                 type="password"
                 value={passwordData.confirmPassword}
-                onChange={(e) => setPasswordData((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                onChange={e =>
+                  setPasswordData(prev => ({
+                    ...prev,
+                    confirmPassword: e.target.value
+                  }))
+                }
                 required
               />
             </div>
@@ -306,7 +358,7 @@ function ProfileContent() {
                   Changing...
                 </>
               ) : (
-                "Change Password"
+                'Change Password'
               )}
             </Button>
           </form>
@@ -320,13 +372,17 @@ function ProfileContent() {
             <AlertTriangle className="h-5 w-5" />
             Danger Zone
           </CardTitle>
-          <CardDescription>Irreversible actions that affect your account</CardDescription>
+          <CardDescription>
+            Irreversible actions that affect your account
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center justify-between p-4 border border-red-200 rounded-lg">
             <div>
               <h3 className="font-medium">Clear All Vehicles</h3>
-              <p className="text-sm text-gray-600">Delete all saved vehicles from your dashboard</p>
+              <p className="text-sm text-gray-600">
+                Delete all saved vehicles from your dashboard
+              </p>
             </div>
             <Button
               variant="outline"
@@ -350,9 +406,15 @@ function ProfileContent() {
           <div className="flex items-center justify-between p-4 border border-red-200 rounded-lg">
             <div>
               <h3 className="font-medium">Delete Account</h3>
-              <p className="text-sm text-gray-600">Permanently delete your account and all associated data</p>
+              <p className="text-sm text-gray-600">
+                Permanently delete your account and all associated data
+              </p>
             </div>
-            <Button variant="destructive" onClick={handleDeleteAccount} disabled={deletingAccount}>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount}
+            >
               {deletingAccount ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -366,7 +428,7 @@ function ProfileContent() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
 
 export default function ProfilePage() {
@@ -379,5 +441,5 @@ export default function ProfilePage() {
         </main>
       </div>
     </PrivateRoute>
-  )
+  );
 }

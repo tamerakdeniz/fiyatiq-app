@@ -28,8 +28,8 @@ export function Navbar() {
   }
 
   const navItems = [
-    { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-    { href: "/estimate", label: "Estimate", icon: Car },
+    { href: "/dashboard", label: "Panel", icon: BarChart3 },
+    { href: "/estimate", label: "Tahmin", icon: Car },
   ]
 
   const isActive = (href: string) => pathname === href
@@ -41,7 +41,7 @@ export function Navbar() {
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2 font-bold text-xl">
             <Car className="h-6 w-6 text-blue-600" />
-            <span className="hidden sm:block">VehicleAI</span>
+            <span className="hidden sm:block">FiyatIQ</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -71,7 +71,7 @@ export function Navbar() {
             {/* Vehicle Count Badge - Desktop */}
             <div className="hidden sm:block">
               <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                My Vehicles
+                Araçlarım
               </Badge>
             </div>
 
@@ -92,13 +92,13 @@ export function Navbar() {
                 <DropdownMenuItem asChild>
                   <Link href="/profile" className="flex items-center gap-2">
                     <Settings className="h-4 w-4" />
-                    Profile Settings
+                    Profil Ayarları
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignout} className="text-red-600">
                   <LogOut className="h-4 w-4 mr-2" />
-                  Sign Out
+                  Çıkış Yap
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
