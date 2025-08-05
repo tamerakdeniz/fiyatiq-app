@@ -26,7 +26,6 @@ from database import (ApiKullanimi, AracHasarDetayi, AracParcasi, AracTahmini,
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from langchain.chains import LLMChain
 from langchain.output_parsers import PydanticOutputParser
 from langchain.prompts import PromptTemplate
 from langchain.schema import BaseOutputParser
@@ -306,10 +305,17 @@ Yanıtını aşağıdaki JSON formatında ver:
 """
 )
 
+from operator import itemgetter
+
 # LangChain Chain oluştur
 from langchain.schema.runnable import RunnableSequence
 
-fiyat_tahmin_chain = fiyat_tahmin_prompt | llm | FiyatTahminParser()
+# Create the chain using LCEL syntax
+fiyat_tahmin_chain = RunnableSequence(
+    first=fiyat_tahmin_prompt,
+    middle=[llm],  # Wrap llm in a list
+    last=FiyatTahminParser()
+).with_config({"run_name": "fiyat_tahmin"})
 
 # Ana endpoint'ler
 @app.get("/", tags=["🏠 Ana Sistem"])
@@ -370,20 +376,20 @@ async def fiyat_tahmini_yap(arac: AracBilgileri, request: Request, db: Session =
     
     try:
         # LangChain Chain'i çalıştır
-        result = await fiyat_tahmin_chain.arun(
-            marka=arac.marka,
-            model=arac.model,
-            yil=arac.yil,
-            kilometre=arac.kilometre,
-            yakit_tipi=arac.yakit_tipi,
-            vites_tipi=arac.vites_tipi,
-            hasar_durumu=arac.hasar_durumu,
-            renk=arac.renk,
-            il=arac.il,
-            motor_hacmi=f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
-            motor_gucu=f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
-            ekstra_bilgiler=f"- Ekstra Bilgiler: {arac.ekstra_bilgiler}" if arac.ekstra_bilgiler else ""
-        )
+        result = fiyat_tahmin_chain.invoke({
+            "marka": arac.marka,
+            "model": arac.model,
+            "yil": arac.yil,
+            "kilometre": arac.kilometre,
+            "yakit_tipi": arac.yakit_tipi,
+            "vites_tipi": arac.vites_tipi,
+            "hasar_durumu": arac.hasar_durumu,
+            "renk": arac.renk,
+            "il": arac.il,
+            "motor_hacmi": f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
+            "motor_gucu": f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
+            "ekstra_bilgiler": f"- Ekstra Bilgiler: {arac.ekstra_bilgiler}" if arac.ekstra_bilgiler else ""
+        })
         
         end_time = time.time()
         processing_time = end_time - start_time
@@ -750,20 +756,20 @@ Yanıtını aşağıdaki JSON formatında ver:
 """
         
         # 4. Call AI for enhanced analysis
-        result = await fiyat_tahmin_chain.arun(
-            marka=arac.marka,
-            model=arac.model,
-            yil=arac.yil,
-            kilometre=arac.kilometre,
-            yakit_tipi=arac.yakit_tipi,
-            vites_tipi=arac.vites_tipi,
-            hasar_durumu=f"Detaylı hasar analizi: {len(damage_list)} parça etkilenmiş",
-            renk=arac.renk,
-            il=arac.il,
-            motor_hacmi=f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
-            motor_gucu=f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
-            ekstra_bilgiler=enhanced_prompt
-        )
+        result = fiyat_tahmin_chain.invoke({
+            "marka": arac.marka,
+            "model": arac.model,
+            "yil": arac.yil,
+            "kilometre": arac.kilometre,
+            "yakit_tipi": arac.yakit_tipi,
+            "vites_tipi": arac.vites_tipi,
+            "hasar_durumu": f"Detaylı hasar analizi: {len(damage_list)} parça etkilenmiş",
+            "renk": arac.renk,
+            "il": arac.il,
+            "motor_hacmi": f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
+            "motor_gucu": f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
+            "ekstra_bilgiler": enhanced_prompt
+        })
         
         end_time = time.time()
         processing_time = end_time - start_time
