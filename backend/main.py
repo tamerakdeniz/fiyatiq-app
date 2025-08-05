@@ -1,7 +1,8 @@
-"Akıllı Araç Fiyat Tahminleme API"
+"""Akıllı Araç Fiyat Tahminleme API
+
 Bu uygulama, kullanıcının girdiği araç bilgilerine göre
 LangChain ve Gemini AI kullanarak anlık fiyat tahmini yapar.
-"
+"""
 
 import json
 import os
@@ -148,8 +149,9 @@ HESAPLAMA VE RAPORLAMA (HTML FORMATINDA):
         *   `<h4>Nihai Fiyat Tahmini</h4>` başlığı altında ulaştığın sonuçları özetle.
     4.  **Pazar Analizi Oluştur:** Aracın modelinin genel pazar durumunu (popülerlik, arz-talep) özetle.
 
-JSON FORMATI: {{"tahmini_fiyat_min": int, "tahmini_fiyat_max": int, "ortalama_fiyat": int, "rapor": "<h4>...</h4><ul><li>...</li></ul>", "pazar_analizi": "<p>...</p>"}}
-Önemli: Yanıtın sadece JSON formatında olsun ve `rapor` ile `pazar_analizi` alanları geçerli HTML içermelidir."")
+    JSON FORMATI: {{"tahmini_fiyat_min": int, "tahmini_fiyat_max": int, "ortalama_fiyat": int, "rapor": "<h4>...</h4><ul><li>...</li></ul>", "pazar_analizi": "<p>...</p>"}}
+    Önemli: Yanıtın sadece JSON formatında olsun ve `rapor` ile `pazar_analizi` alanları geçerli HTML içermelidir."""
+)
 
 # LangChain Chains
 hizli_tahmin_chain = hizli_tahmin_prompt | llm | FiyatTahminParser()
@@ -179,12 +181,12 @@ async def detayli_fiyat_tahmini(arac: DetayliAracBilgileri):
             raise HTTPException(status_code=500, detail="Referans fiyat alınamadı, detaylı analiz yapılamıyor.")
 
         # 2. Adım: Hasar listesini formatla.
-        hasar_listesi_str = ", ".join([f"{h.parca}: {h.durum}" for h in arac.hasar_detaylari if h.parca and h.durum]) or "Hasar yok"
+        hasar_listesi_str = ", ".join([f'{h.parca}: {h.durum}' for h in arac.hasar_detaylari if h.parca and h.durum]) or "Hasar yok"
 
         # 3. Adım: Elde edilen referans fiyatı ve diğer detayları kullanarak "Detaylı Analiz" zincirini çağır.
         detayli_analiz_input = {
             **arac.dict(),
-            "referans_fiyat": f"{referans_fiyat:,}",
+            "referans_fiyat": f'{referans_fiyat:,}',
             "hasar_listesi": hasar_listesi_str
         }
         
