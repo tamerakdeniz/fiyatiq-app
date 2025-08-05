@@ -4,53 +4,43 @@ Bu uygulama, kullanıcının girdiği araç bilgilerine göre
 LangChain ve Gemini AI kullanarak anlık fiyat tahmini yapar.
 """
 
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Optional, List
+import json
 import os
-from dotenv import load_dotenv
+import re
 import time
 from datetime import datetime
-from sqlalchemy.orm import Session
-
-# LangChain imports
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import PromptTemplate
-from langchain.output_parsers import PydanticOutputParser
-from langchain.schema import BaseOutputParser
-from langchain.chains import LLMChain
-import json
-import re
-
-# Database imports
-from database import (
-    create_tables, get_db, AracTahmini, 
-    ApiKullanimi, PopulerAraclar, SessionLocal,
-    Kullanici, KullaniciAraci, AracParcasi,
-    HasarTipi, AracHasarDetayi, PazarVerisi
-)
+from typing import List, Optional
 
 # CRUD imports
 import crud
-
-# Model imports
-from models import (
-    KullaniciOlustur, KullaniciGuncelle, KullaniciYanit,
-    AracOlustur, AracGuncelle, AracYanit, AracOzet,
-    TahminGecmisi, KullaniciIstatistik, YanitMesaj,
-    SayfalamaBilgisi, SayfaliYanit, EmailKontrol,
-    KilometreGuncelle, DetayliTahminIstegi, DetayliTahminSonucu,
-    AracParcasiYanit, HasarTipiYanit, PazarVerisiYanit
-)
-
 # Authentication imports
-from auth import (
-    UserRegister, UserLogin, TokenResponse, UserProfile, PasswordChange,
-    register_user, authenticate_user, get_current_user, get_current_user_optional,
-    create_access_token, create_refresh_token, change_password,
-    SecurityLog, rate_limiter, sanitize_input
-)
+from auth import (PasswordChange, SecurityLog, TokenResponse, UserLogin,
+                  UserProfile, UserRegister, authenticate_user,
+                  change_password, create_access_token, create_refresh_token,
+                  get_current_user, get_current_user_optional, rate_limiter,
+                  register_user, sanitize_input)
+# Database imports
+from database import (ApiKullanimi, AracHasarDetayi, AracParcasi, AracTahmini,
+                      HasarTipi, Kullanici, KullaniciAraci, PazarVerisi,
+                      PopulerAraclar, SessionLocal, create_tables, get_db)
+from dotenv import load_dotenv
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from langchain.chains import LLMChain
+from langchain.output_parsers import PydanticOutputParser
+from langchain.prompts import PromptTemplate
+from langchain.schema import BaseOutputParser
+# LangChain imports
+from langchain_google_genai import ChatGoogleGenerativeAI
+# Model imports
+from models import (AracGuncelle, AracOlustur, AracOzet, AracParcasiYanit,
+                    AracYanit, DetayliTahminIstegi, DetayliTahminSonucu,
+                    EmailKontrol, HasarTipiYanit, KilometreGuncelle,
+                    KullaniciGuncelle, KullaniciIstatistik, KullaniciOlustur,
+                    KullaniciYanit, PazarVerisiYanit, SayfalamaBilgisi,
+                    SayfaliYanit, TahminGecmisi, YanitMesaj)
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 # Çevre değişkenlerini yükle
 load_dotenv()
@@ -178,7 +168,7 @@ class AracBilgileri(BaseModel):
     ekstra_bilgiler: Optional[str] = Field(None, description="Ek bilgiler", example="Çok temiz araç")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "marka": "Toyota",
                 "model": "Corolla",
@@ -210,7 +200,7 @@ class TahminSonucu(BaseModel):
     tahmin_id: Optional[int] = Field(description="Veritabanındaki tahmin ID'si", example=123)
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "tahmini_fiyat_min": 450000,
                 "tahmini_fiyat_max": 550000,
@@ -317,11 +307,9 @@ Yanıtını aşağıdaki JSON formatında ver:
 )
 
 # LangChain Chain oluştur
-fiyat_tahmin_chain = LLMChain(
-    llm=llm,
-    prompt=fiyat_tahmin_prompt,
-    output_parser=FiyatTahminParser()
-)
+from langchain.schema.runnable import RunnableSequence
+
+fiyat_tahmin_chain = fiyat_tahmin_prompt | llm | FiyatTahminParser()
 
 # Ana endpoint'ler
 @app.get("/", tags=["🏠 Ana Sistem"])
@@ -664,8 +652,9 @@ async def detayli_fiyat_tahmini(arac: DetayliTahminIstegi, request: Request, db:
     
     try:
         # Import web scraper
-        from web_scraper import scraper, depreciation_calculator, save_market_data_to_db
-        
+        from web_scraper import (depreciation_calculator,
+                                 save_market_data_to_db, scraper)
+
         # 1. Get real-time market data
         market_data = await scraper.get_depreciation_data_by_damage(
             arac.marka, arac.model, arac.yil
@@ -892,13 +881,13 @@ async def get_pazar_verileri(marka: str, model: str, yil: int, db: Session = Dep
     **Returns:** Latest market data including damage-specific pricing
     """
     from web_scraper import get_latest_market_data
-    
+
     # Try to get from database first
     pazar_verisi = get_latest_market_data(db, marka, model, yil)
     
     if not pazar_verisi:
         # If not found, collect new data
-        from web_scraper import scraper, save_market_data_to_db
+        from web_scraper import save_market_data_to_db, scraper
         market_data = await scraper.get_depreciation_data_by_damage(marka, model, yil)
         pazar_verisi = save_market_data_to_db(db, market_data)
     
@@ -1124,7 +1113,7 @@ async def refresh_token(refresh_token: str, db: Session = Depends(get_db)):
     """
     try:
         from auth import verify_token
-        
+
         # Verify refresh token
         payload = verify_token(refresh_token)
         

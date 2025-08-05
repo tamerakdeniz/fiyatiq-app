@@ -4,9 +4,10 @@ API request/response için veri validasyonu
 FastAPI Swagger UI'da otomatik dokümantasyon oluşturur
 """
 
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 # === KULLANICI MODELLERİ ===
 
@@ -24,7 +25,7 @@ class KullaniciOlustur(BaseModel):
     sehir: Optional[str] = Field(None, max_length=30, description="Şehir", example="İstanbul")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "ad": "Ahmet",
                 "soyad": "Yılmaz",
@@ -76,7 +77,7 @@ class AracOlustur(BaseModel):
     notlar: Optional[str] = Field(None, max_length=500, description="Ek notlar", example="Harika durumda araç")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "arac_adi": "Benim Corollam",
                 "marka": "Toyota",
@@ -234,7 +235,7 @@ class DetayliTahminIstegi(BaseModel):
     ekstra_bilgiler: Optional[str] = Field(None, description="Additional information")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "marka": "Toyota",
                 "model": "Corolla",
