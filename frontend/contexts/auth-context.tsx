@@ -77,14 +77,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (name: string, email: string, password: string) => {
-    console.log('📝 Creating new account:', { name, email });
+  const signup = async (
+    ad: string,
+    soyad: string,
+    email: string,
+    password: string
+  ) => {
+    console.log('📝 Creating new account:', { ad, soyad, email });
     try {
-      const response = await authService.signup(name, email, password);
+      const response = await authService.signup(ad, soyad, email, password);
       localStorage.setItem('token', response.token);
       setUser(response.user);
       setBackendConnected(true);
-      console.log('✅ Account created successfully:', response.user.name);
+      console.log('✅ Account created successfully:', `${ad} ${soyad}`);
     } catch (error) {
       setBackendConnected(false);
       throw error;

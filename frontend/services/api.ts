@@ -1,5 +1,8 @@
+import type { BackendUser } from '@/types';
+
 // Real API Service - Connects to FastAPI backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
 
 interface ApiResponse<T> {
   data?: T;
@@ -15,28 +18,33 @@ class ApiError extends Error {
 }
 
 // Utility function for API calls
-async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+async function apiCall<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
-  
+
   const defaultHeaders = {
-    'Content-Type': 'application/json',
+    'Content-Type': 'application/json'
   };
 
   const config: RequestInit = {
     ...options,
     headers: {
       ...defaultHeaders,
-      ...options.headers,
-    },
+      ...options.headers
+    }
   };
 
   try {
     const response = await fetch(url, config);
-    
+
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       throw new ApiError(
-        errorData.detail || errorData.message || `HTTP ${response.status}: ${response.statusText}`,
+        errorData.detail ||
+          errorData.message ||
+          `HTTP ${response.status}: ${response.statusText}`,
         response.status
       );
     }
@@ -44,7 +52,7 @@ async function apiCall<T>(endpoint: string, options: RequestInit = {}): Promise<
     // Handle empty responses
     const text = await response.text();
     if (!text) return {} as T;
-    
+
     return JSON.parse(text) as T;
   } catch (error) {
     if (error instanceof ApiError) {
@@ -131,13 +139,13 @@ export const authService = {
         };
       }>('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password })
       });
 
       // Store tokens securely
       localStorage.setItem('access_token', response.access_token);
       localStorage.setItem('refresh_token', response.refresh_token);
-      
+
       return {
         token: response.access_token,
         user: {
@@ -145,8 +153,8 @@ export const authService = {
           name: `${response.user.ad} ${response.user.soyad}`,
           email: response.user.email,
           telefon: response.user.telefon,
-          sehir: response.user.sehir,
-        },
+          sehir: response.user.sehir
+        }
       };
     } catch (error) {
       throw error;
@@ -160,28 +168,36 @@ export const authService = {
       const ad = nameParts[0] || '';
       const soyad = nameParts.slice(1).join(' ') || '';
 
+      // Validate password requirements
+      if (password.length < 8) {
+        throw new ApiError('Password must be at least 8 characters long');
+      }
+      if (!password.match(/[A-Z]/)) {
+        throw new ApiError(
+          'Password must contain at least one uppercase letter'
+        );
+      }
+      if (!password.match(/[a-z]/)) {
+        throw new ApiError(
+          'Password must contain at least one lowercase letter'
+        );
+      }
+
       const response = await apiCall<{
         access_token: string;
         refresh_token: string;
         token_type: string;
         expires_in: number;
-        user: {
-          id: number;
-          ad: string;
-          soyad: string;
-          email: string;
-          telefon?: string;
-          sehir?: string;
-        };
+        user: BackendUser;
       }>('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ ad, soyad, email, password }),
+        body: JSON.stringify({ ad, soyad, email, password })
       });
 
       // Store tokens securely
       localStorage.setItem('access_token', response.access_token);
       localStorage.setItem('refresh_token', response.refresh_token);
-      
+
       return {
         token: response.access_token,
         user: {
@@ -189,8 +205,8 @@ export const authService = {
           name: `${response.user.ad} ${response.user.soyad}`,
           email: response.user.email,
           telefon: response.user.telefon,
-          sehir: response.user.sehir,
-        },
+          sehir: response.user.sehir
+        }
       };
     } catch (error) {
       throw error;
@@ -216,8 +232,8 @@ export const authService = {
         email_verified: boolean;
       }>('/auth/profile', {
         headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+          Authorization: `Bearer ${token}`
+        }
       });
 
       return {
@@ -228,7 +244,7 @@ export const authService = {
         sehir: response.sehir,
         createdAt: response.kayit_tarihi,
         lastLogin: response.son_giris,
-        emailVerified: response.email_verified,
+        emailVerified: response.email_verified
       };
     } catch (error) {
       // If token is invalid, clear it and redirect to login
@@ -255,7 +271,7 @@ export const authService = {
         user: any;
       }>('/auth/refresh', {
         method: 'POST',
-        body: JSON.stringify({ refresh_token: refreshToken }),
+        body: JSON.stringify({ refresh_token: refreshToken })
       });
 
       localStorage.setItem('access_token', response.access_token);
@@ -286,19 +302,19 @@ export const authService = {
       await apiCall('/auth/change-password', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({
           current_password: currentPassword,
-          new_password: newPassword,
-        }),
+          new_password: newPassword
+        })
       });
 
       return { success: true };
     } catch (error) {
       throw error;
     }
-  },
+  }
 };
 
 // Vehicle Service
@@ -319,18 +335,18 @@ export const vehicleService = {
       vites_tipi: 'Manuel',
       hasar_durumu: vehicleData.damageStatus,
       renk: 'Beyaz',
-      il: 'İstanbul',
+      il: 'İstanbul'
     };
 
     const response = await apiCall<EstimationResponse>('/tahmin-et', {
       method: 'POST',
-      body: JSON.stringify(requestData),
+      body: JSON.stringify(requestData)
     });
 
     return {
       estimatedPrice: response.ortalama_fiyat,
       aiSummary: response.rapor,
-      confidence: 85, // Backend doesn't return confidence, using default
+      confidence: 85 // Backend doesn't return confidence, using default
     };
   },
 
@@ -354,7 +370,7 @@ export const vehicleService = {
       estimatedPrice: vehicleData.estimatedPrice,
       aiSummary: vehicleData.aiSummary,
       createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
     };
 
     return mockVehicle;
@@ -370,9 +386,9 @@ export const vehicleService = {
     return {
       id,
       estimatedPrice: Math.floor(Math.random() * 100000) + 400000,
-      confidence: Math.floor(Math.random() * 20) + 80,
+      confidence: Math.floor(Math.random() * 20) + 80
     };
-  },
+  }
 };
 
 // Profile Service
@@ -385,9 +401,9 @@ export const profileService = {
     return {
       name: data.name,
       email: data.email,
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     };
-  },
+  }
 };
 
 // System health check
@@ -398,7 +414,7 @@ export const systemService = {
 
   async getStatistics() {
     return await apiCall('/istatistikler');
-  },
+  }
 };
 
 console.log('🚀 Real API Service initialized');

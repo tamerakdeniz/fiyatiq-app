@@ -4,7 +4,11 @@ export interface User {
   id: number;
   name: string;
   email: string;
+  telefon?: string;
+  sehir?: string;
   createdAt: string;
+  lastLogin?: string;
+  emailVerified: boolean;
 }
 
 // Backend user structure
