@@ -192,3 +192,136 @@ class EmailKontrol(BaseModel):
     
 class KilometreGuncelle(BaseModel):
     yeni_kilometre: int = Field(..., ge=0, description="Yeni kilometre değeri")
+
+# === HASAR VE DEĞER KAYBETME MODELLERİ ===
+
+class HasarDetayi(BaseModel):
+    """Individual damage detail for car parts"""
+    parca_id: int = Field(..., description="Car part ID")
+    hasar_tipi_id: int = Field(..., description="Damage type ID")
+    hasar_seviyesi: str = Field("Orta", description="Damage severity (Hafif/Orta/Ağır)")
+    tahmini_maliyet: Optional[int] = Field(None, description="Estimated repair cost")
+    aciklama: Optional[str] = Field(None, description="Additional notes")
+
+class DetayliTahminIstegi(BaseModel):
+    """
+    ## 🔍 Detailed Car Evaluation Request
+    
+    Enhanced evaluation with specific damage assessment
+    """
+    # Basic car info
+    marka: str = Field(..., description="Car brand", example="Toyota")
+    model: str = Field(..., description="Car model", example="Corolla")
+    yil: int = Field(..., ge=1950, le=2025, description="Model year", example=2020)
+    kilometre: int = Field(..., ge=0, description="Mileage", example=50000)
+    yakit_tipi: str = Field(..., description="Fuel type", example="Benzin")
+    vites_tipi: str = Field(..., description="Transmission", example="Otomatik")
+    renk: str = Field(..., description="Color", example="Beyaz")
+    il: str = Field(..., description="City", example="İstanbul")
+    
+    # Additional technical details
+    motor_hacmi: Optional[float] = Field(None, description="Engine capacity (L)", example=1.6)
+    motor_gucu: Optional[int] = Field(None, description="Engine power (HP)", example=130)
+    
+    # Damage assessment
+    hasar_detaylari: List[HasarDetayi] = Field([], description="List of damage details")
+    genel_durum: str = Field("İyi", description="Overall condition")
+    bakım_durumu: str = Field("Düzenli", description="Maintenance status")
+    kaza_gecmisi: bool = Field(False, description="Accident history")
+    
+    # Additional info
+    ekstra_bilgiler: Optional[str] = Field(None, description="Additional information")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "marka": "Toyota",
+                "model": "Corolla",
+                "yil": 2020,
+                "kilometre": 50000,
+                "yakit_tipi": "Benzin",
+                "vites_tipi": "Otomatik",
+                "renk": "Beyaz",
+                "il": "İstanbul",
+                "motor_hacmi": 1.6,
+                "motor_gucu": 130,
+                "hasar_detaylari": [
+                    {
+                        "parca_id": 3,
+                        "hasar_tipi_id": 1,
+                        "hasar_seviyesi": "Hafif",
+                        "tahmini_maliyet": 5000,
+                        "aciklama": "Sol ön kapıda küçük çizik"
+                    }
+                ],
+                "genel_durum": "İyi",
+                "bakım_durumu": "Düzenli",
+                "kaza_gecmisi": False,
+                "ekstra_bilgiler": "Garajda saklanmış temiz araç"
+            }
+        }
+
+class DetayliTahminSonucu(BaseModel):
+    """
+    ## 📊 Detailed AI Estimation Result
+    
+    Enhanced estimation with depreciation breakdown
+    """
+    # Basic estimation
+    tahmini_fiyat_min: int = Field(description="Minimum estimated price")
+    tahmini_fiyat_max: int = Field(description="Maximum estimated price")
+    ortalama_fiyat: int = Field(description="Average estimated price")
+    
+    # Market data
+    pazar_fiyati: int = Field(description="Current market price")
+    hasar_indirimi: int = Field(description="Total damage discount")
+    net_fiyat: int = Field(description="Final net price after damage assessment")
+    
+    # Depreciation breakdown
+    hasar_detay_raporu: List[dict] = Field(description="Detailed damage impact breakdown")
+    toplam_depreciation_orani: float = Field(description="Total depreciation percentage")
+    
+    # AI analysis
+    rapor: str = Field(description="Detailed AI analysis report")
+    pazar_analizi: str = Field(description="Market analysis")
+    oneri: str = Field(description="AI recommendations")
+    
+    # Meta information
+    analiz_tarihi: str = Field(description="Analysis date")
+    güven_skoru: int = Field(description="Confidence score (0-100)")
+    veri_kaynagi: str = Field(description="Data source information")
+    tahmin_id: Optional[int] = Field(description="Estimation ID")
+
+class AracParcasiYanit(BaseModel):
+    """Car part response model"""
+    id: int
+    parca_adi: str
+    kategori: str
+    ortalama_maliyet: Optional[int]
+    etki_faktoru: float
+    aktif: bool
+
+class HasarTipiYanit(BaseModel):
+    """Damage type response model"""
+    id: int
+    hasar_adi: str
+    aciklama: Optional[str]
+    deger_azalma_orani: float
+    aktif: bool
+
+class PazarVerisiYanit(BaseModel):
+    """Market data response model"""
+    id: int
+    kaynak: str
+    marka: str
+    model: str
+    yil: int
+    ortalama_fiyat: Optional[int]
+    hasarsiz_ortalama: Optional[int]
+    boyali_ortalama: Optional[int]
+    degisen_ortalama: Optional[int]
+    hasarli_ortalama: Optional[int]
+    veri_tarihi: datetime
+    
+    class Config:
+        from_attributes = True

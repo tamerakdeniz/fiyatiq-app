@@ -3,11 +3,13 @@ CRUD İşlemleri
 Kullanıcı ve Araç yönetimi için veritabanı işlemleri
 """
 
-from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
-from database import Kullanici, KullaniciAraci, AracTahmini
 from datetime import datetime
 from typing import List, Optional
+
+from database import (AracHasarDetayi, AracParcasi, AracTahmini, HasarTipi,
+                      Kullanici, KullaniciAraci, PazarVerisi)
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
 
 # === KULLANICI CRUD İŞLEMLERİ ===
 
@@ -171,7 +173,7 @@ def arac_tahminleri(db: Session, arac_id: int, limit: int = 10):
 def tahmin_istatistikleri(db: Session, kullanici_id: int):
     """Kullanıcının tahmin istatistiklerini getirir"""
     from sqlalchemy import func
-    
+
     # Toplam tahmin sayısı
     toplam_tahmin = db.query(AracTahmini).filter(AracTahmini.kullanici_id == kullanici_id).count()
     
@@ -221,3 +223,248 @@ def marka_model_listesi(db: Session, kullanici_id: int):
     ).filter(
         and_(KullaniciAraci.kullanici_id == kullanici_id, KullaniciAraci.aktif == True)
     ).all()
+
+# === ARAÇ PARÇALARI CRUD İŞLEMLERİ ===
+
+def get_arac_parcalari(db: Session, kategori: Optional[str] = None, aktif_mi: bool = True):
+    """Araç parçalarını getirir"""
+    query = db.query(AracParcasi).filter(AracParcasi.aktif == aktif_mi)
+    
+    if kategori:
+        query = query.filter(AracParcasi.kategori == kategori)
+    
+    return query.all()
+
+def get_arac_parcasi(db: Session, parca_id: int):
+    """ID'ye göre araç parçası getirir"""
+    return db.query(AracParcasi).filter(AracParcasi.id == parca_id).first()
+
+def create_arac_parcasi(db: Session, parca_adi: str, kategori: str, ortalama_maliyet: Optional[int] = None, etki_faktoru: float = 0.05):
+    """Yeni araç parçası oluşturur"""
+    parca = AracParcasi(
+        parca_adi=parca_adi,
+        kategori=kategori,
+        ortalama_maliyet=ortalama_maliyet,
+        etki_faktoru=etki_faktoru,
+        aktif=True
+    )
+    
+    db.add(parca)
+    db.commit()
+    db.refresh(parca)
+    return parca
+
+def update_arac_parcasi(db: Session, parca_id: int, **kwargs):
+    """Araç parçası bilgilerini günceller"""
+    parca = db.query(AracParcasi).filter(AracParcasi.id == parca_id).first()
+    if not parca:
+        return None
+    
+    for key, value in kwargs.items():
+        if hasattr(parca, key) and value is not None:
+            setattr(parca, key, value)
+    
+    db.commit()
+    db.refresh(parca)
+    return parca
+
+# === HASAR TİPLERİ CRUD İŞLEMLERİ ===
+
+def get_hasar_tipleri(db: Session, aktif_mi: bool = True):
+    """Hasar tiplerini getirir"""
+    return db.query(HasarTipi).filter(HasarTipi.aktif == aktif_mi).all()
+
+def get_hasar_tipi(db: Session, hasar_tipi_id: int):
+    """ID'ye göre hasar tipi getirir"""
+    return db.query(HasarTipi).filter(HasarTipi.id == hasar_tipi_id).first()
+
+def create_hasar_tipi(db: Session, hasar_adi: str, aciklama: Optional[str] = None, deger_azalma_orani: float = 0.1):
+    """Yeni hasar tipi oluşturur"""
+    hasar_tipi = HasarTipi(
+        hasar_adi=hasar_adi,
+        aciklama=aciklama,
+        deger_azalma_orani=deger_azalma_orani,
+        aktif=True
+    )
+    
+    db.add(hasar_tipi)
+    db.commit()
+    db.refresh(hasar_tipi)
+    return hasar_tipi
+
+# === HASAR DETAYLARI CRUD İŞLEMLERİ ===
+
+def create_hasar_detayi(db: Session, tahmin_id: int, parca_id: int, hasar_tipi_id: int, 
+                       hasar_seviyesi: str = "Orta", tahmini_maliyet: Optional[int] = None,
+                       deger_etkisi: Optional[int] = None, aciklama: Optional[str] = None):
+    """Yeni hasar detayı oluşturur"""
+    hasar_detayi = AracHasarDetayi(
+        tahmin_id=tahmin_id,
+        parca_id=parca_id,
+        hasar_tipi_id=hasar_tipi_id,
+        hasar_seviyesi=hasar_seviyesi,
+        tahmini_maliyet=tahmini_maliyet,
+        deger_etkisi=deger_etkisi,
+        aciklama=aciklama,
+        kayit_tarihi=datetime.utcnow()
+    )
+    
+    db.add(hasar_detayi)
+    db.commit()
+    db.refresh(hasar_detayi)
+    return hasar_detayi
+
+def get_tahmin_hasar_detaylari(db: Session, tahmin_id: int):
+    """Tahmine ait hasar detaylarını getirir"""
+    return db.query(AracHasarDetayi).filter(AracHasarDetayi.tahmin_id == tahmin_id).all()
+
+def delete_hasar_detayi(db: Session, hasar_detayi_id: int):
+    """Hasar detayını siler"""
+    hasar_detayi = db.query(AracHasarDetayi).filter(AracHasarDetayi.id == hasar_detayi_id).first()
+    if hasar_detayi:
+        db.delete(hasar_detayi)
+        db.commit()
+        return True
+    return False
+
+# === PAZAR VERİLERİ CRUD İŞLEMLERİ ===
+
+def create_pazar_verisi(db: Session, kaynak: str, marka: str, model: str, yil: int, 
+                       ortalama_fiyat: Optional[int] = None, minimum_fiyat: Optional[int] = None,
+                       maksimum_fiyat: Optional[int] = None, ilan_sayisi: int = 0,
+                       hasarsiz_ortalama: Optional[int] = None, boyali_ortalama: Optional[int] = None,
+                       degisen_ortalama: Optional[int] = None, hasarli_ortalama: Optional[int] = None):
+    """Yeni pazar verisi oluşturur"""
+    pazar_verisi = PazarVerisi(
+        kaynak=kaynak,
+        marka=marka,
+        model=model,
+        yil=yil,
+        ortalama_fiyat=ortalama_fiyat,
+        minimum_fiyat=minimum_fiyat,
+        maksimum_fiyat=maksimum_fiyat,
+        ilan_sayisi=ilan_sayisi,
+        hasarsiz_ortalama=hasarsiz_ortalama,
+        boyali_ortalama=boyali_ortalama,
+        degisen_ortalama=degisen_ortalama,
+        hasarli_ortalama=hasarli_ortalama,
+        veri_tarihi=datetime.utcnow(),
+        guncelleme_tarihi=datetime.utcnow(),
+        aktif=True
+    )
+    
+    db.add(pazar_verisi)
+    db.commit()
+    db.refresh(pazar_verisi)
+    return pazar_verisi
+
+def get_latest_pazar_verisi(db: Session, marka: str, model: str, yil: int):
+    """En güncel pazar verisini getirir"""
+    return db.query(PazarVerisi).filter(
+        PazarVerisi.marka == marka,
+        PazarVerisi.model == model,
+        PazarVerisi.yil == yil,
+        PazarVerisi.aktif == True
+    ).order_by(PazarVerisi.veri_tarihi.desc()).first()
+
+def get_pazar_verileri_by_marka(db: Session, marka: str, limit: int = 50):
+    """Markaya göre pazar verilerini getirir"""
+    return db.query(PazarVerisi).filter(
+        PazarVerisi.marka == marka,
+        PazarVerisi.aktif == True
+    ).order_by(PazarVerisi.veri_tarihi.desc()).limit(limit).all()
+
+def update_pazar_verisi(db: Session, pazar_verisi_id: int, **kwargs):
+    """Pazar verisi günceller"""
+    pazar_verisi = db.query(PazarVerisi).filter(PazarVerisi.id == pazar_verisi_id).first()
+    if not pazar_verisi:
+        return None
+    
+    for key, value in kwargs.items():
+        if hasattr(pazar_verisi, key) and value is not None:
+            setattr(pazar_verisi, key, value)
+    
+    pazar_verisi.guncelleme_tarihi = datetime.utcnow()
+    db.commit()
+    db.refresh(pazar_verisi)
+    return pazar_verisi
+
+# === GELİŞMİŞ ARAMA VE FİLTRELEME ===
+
+def search_tahminler_by_hasar(db: Session, hasar_tipi_id: Optional[int] = None, 
+                             parca_id: Optional[int] = None, limit: int = 20):
+    """Hasar tipine veya parçaya göre tahmin arar"""
+    query = db.query(AracTahmini).join(AracHasarDetayi)
+    
+    if hasar_tipi_id:
+        query = query.filter(AracHasarDetayi.hasar_tipi_id == hasar_tipi_id)
+    
+    if parca_id:
+        query = query.filter(AracHasarDetayi.parca_id == parca_id)
+    
+    return query.order_by(AracTahmini.analiz_tarihi.desc()).limit(limit).all()
+
+def get_populer_hasar_tipleri(db: Session, limit: int = 10):
+    """En popüler hasar tiplerini getirir"""
+    from sqlalchemy import func
+    
+    return db.query(
+        HasarTipi.hasar_adi,
+        func.count(AracHasarDetayi.id).label('kullanim_sayisi')
+    ).join(AracHasarDetayi).group_by(HasarTipi.id).order_by(
+        func.count(AracHasarDetayi.id).desc()
+    ).limit(limit).all()
+
+def get_ortalama_hasar_maliyeti(db: Session, parca_id: int, hasar_tipi_id: int):
+    """Belirli parça ve hasar tipi için ortalama maliyet"""
+    from sqlalchemy import func
+    
+    result = db.query(func.avg(AracHasarDetayi.tahmini_maliyet)).filter(
+        and_(
+            AracHasarDetayi.parca_id == parca_id,
+            AracHasarDetayi.hasar_tipi_id == hasar_tipi_id,
+            AracHasarDetayi.tahmini_maliyet.isnot(None)
+        )
+    ).scalar()
+    
+    return result or 0
+
+# === İSTATİSTİK VE ANALİZ ===
+
+def get_hasar_istatistikleri(db: Session, kullanici_id: Optional[int] = None):
+    """Hasar istatistiklerini getirir"""
+    from sqlalchemy import func
+    
+    query = db.query(AracTahmini)
+    if kullanici_id:
+        query = query.filter(AracTahmini.kullanici_id == kullanici_id)
+    
+    # Temel istatistikler
+    toplam_tahmin = query.count()
+    
+    # Hasar detayları olan tahminler
+    hasarli_tahmin_sayisi = query.join(AracHasarDetayi).count()
+    
+    # En çok hasarlı parçalar
+    en_cok_hasarli_parcalar = db.query(
+        AracParcasi.parca_adi,
+        func.count(AracHasarDetayi.id).label('hasar_sayisi')
+    ).join(AracHasarDetayi).group_by(AracParcasi.id).order_by(
+        func.count(AracHasarDetayi.id).desc()
+    ).limit(5).all()
+    
+    # Ortalama hasar oranı
+    if toplam_tahmin > 0:
+        hasar_orani = (hasarli_tahmin_sayisi / toplam_tahmin) * 100
+    else:
+        hasar_orani = 0
+    
+    return {
+        "toplam_tahmin": toplam_tahmin,
+        "hasarli_tahmin_sayisi": hasarli_tahmin_sayisi,
+        "hasar_orani": round(hasar_orani, 2),
+        "en_cok_hasarli_parcalar": [
+            {"parca_adi": parca[0], "hasar_sayisi": parca[1]} 
+            for parca in en_cok_hasarli_parcalar
+        ]
+    }

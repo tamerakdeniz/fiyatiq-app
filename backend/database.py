@@ -3,12 +3,13 @@ Veritabanı modelleri
 SQLAlchemy ORM kullanarak SQLite veritabanı tabloları
 """
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Boolean, ForeignKey
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
-from sqlalchemy import create_engine
-from datetime import datetime
 import os
+from datetime import datetime
+
+from sqlalchemy import (Boolean, Column, DateTime, Float, ForeignKey, Integer,
+                        String, Text, create_engine)
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship, sessionmaker
 
 Base = declarative_base()
 
@@ -134,8 +135,91 @@ class PopulerAraclar(Base):
     def __repr__(self):
         return f"<PopulerAraclar(marka='{self.marka}', model='{self.model}', arama_sayisi={self.arama_sayisi})>"
 
+# New tables for car damage and depreciation assessment
+class AracParcasi(Base):
+    """Car parts that can affect depreciation"""
+    __tablename__ = "arac_parcalari"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    parca_adi = Column(String(100), nullable=False)  # Door, Engine, Transmission, etc.
+    kategori = Column(String(50), nullable=False)    # Body, Engine, Interior, etc.
+    ortalama_maliyet = Column(Integer, nullable=True)  # Average replacement cost
+    etki_faktoru = Column(Float, default=1.0)        # Impact factor on depreciation (0.1 to 1.0)
+    aktif = Column(Boolean, default=True)
+    
+    def __repr__(self):
+        return f"<AracParcasi(parca_adi='{self.parca_adi}', kategori='{self.kategori}')>"
+
+class HasarTipi(Base):
+    """Types of damage that can occur to car parts"""
+    __tablename__ = "hasar_tipleri"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    hasar_adi = Column(String(100), nullable=False)   # Scratched, Dented, Replaced, etc.
+    aciklama = Column(Text, nullable=True)
+    deger_azalma_orani = Column(Float, default=0.1)   # Percentage decrease in value (0.05 to 0.5)
+    aktif = Column(Boolean, default=True)
+    
+    def __repr__(self):
+        return f"<HasarTipi(hasar_adi='{self.hasar_adi}', deger_azalma_orani={self.deger_azalma_orani})>"
+
+class AracHasarDetayi(Base):
+    """Detailed damage assessment for specific vehicle evaluations"""
+    __tablename__ = "arac_hasar_detaylari"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    tahmin_id = Column(Integer, ForeignKey("arac_tahminleri.id"), nullable=False)
+    parca_id = Column(Integer, ForeignKey("arac_parcalari.id"), nullable=False)
+    hasar_tipi_id = Column(Integer, ForeignKey("hasar_tipleri.id"), nullable=False)
+    
+    # Additional details
+    hasar_seviyesi = Column(String(20), default="Orta")  # Hafif, Orta, Ağır
+    tahmini_maliyet = Column(Integer, nullable=True)      # Estimated repair cost
+    deger_etkisi = Column(Integer, nullable=True)         # Direct impact on car value
+    aciklama = Column(Text, nullable=True)               # Additional notes
+    
+    kayit_tarihi = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    tahmin = relationship("AracTahmini", backref="hasar_detaylari")
+    parca = relationship("AracParcasi")
+    hasar_tipi = relationship("HasarTipi")
+    
+    def __repr__(self):
+        return f"<AracHasarDetayi(tahmin_id={self.tahmin_id}, parca='{self.parca.parca_adi if self.parca else 'N/A'}')>"
+
+class PazarVerisi(Base):
+    """Market data collected from web scraping for depreciation calculations"""
+    __tablename__ = "pazar_verileri"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    kaynak = Column(String(100), nullable=False)          # Source: sahibinden.com, arabam.com, etc.
+    marka = Column(String(50), nullable=False)
+    model = Column(String(100), nullable=False)
+    yil = Column(Integer, nullable=False)
+    
+    # Market data
+    ortalama_fiyat = Column(Integer, nullable=True)
+    minimum_fiyat = Column(Integer, nullable=True)
+    maksimum_fiyat = Column(Integer, nullable=True)
+    ilan_sayisi = Column(Integer, default=0)
+    
+    # Damage-specific data
+    hasarsiz_ortalama = Column(Integer, nullable=True)
+    boyali_ortalama = Column(Integer, nullable=True)
+    degisen_ortalama = Column(Integer, nullable=True)
+    hasarli_ortalama = Column(Integer, nullable=True)
+    
+    # Meta
+    veri_tarihi = Column(DateTime, default=datetime.utcnow)
+    guncelleme_tarihi = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    aktif = Column(Boolean, default=True)
+    
+    def __repr__(self):
+        return f"<PazarVerisi(marka='{self.marka}', model='{self.model}', kaynak='{self.kaynak}')>"
+
 # Veritabanı bağlantısı ve session yönetimi
-DATABASE_URL = "sqlite:///./arac_fiyat_tahmin.db"
+DATABASE_URL = "sqlite:///./fiyatiq.db"
 
 engine = create_engine(
     DATABASE_URL, 

@@ -27,7 +27,8 @@ import re
 from database import (
     create_tables, get_db, AracTahmini, 
     ApiKullanimi, PopulerAraclar, SessionLocal,
-    Kullanici, KullaniciAraci
+    Kullanici, KullaniciAraci, AracParcasi,
+    HasarTipi, AracHasarDetayi, PazarVerisi
 )
 
 # CRUD imports
@@ -39,7 +40,8 @@ from models import (
     AracOlustur, AracGuncelle, AracYanit, AracOzet,
     TahminGecmisi, KullaniciIstatistik, YanitMesaj,
     SayfalamaBilgisi, SayfaliYanit, EmailKontrol,
-    KilometreGuncelle
+    KilometreGuncelle, DetayliTahminIstegi, DetayliTahminSonucu,
+    AracParcasiYanit, HasarTipiYanit, PazarVerisiYanit
 )
 
 # Çevre değişkenlerini yükle
@@ -614,6 +616,279 @@ async def get_tahmin_detay(tahmin_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Tahmin detayları alınırken hata: {str(e)}")
+
+# ===== ENHANCED CAR EVALUATION ENDPOINTS =====
+
+@app.post("/detayli-tahmin", response_model=DetayliTahminSonucu, tags=["🎯 Fiyat Tahmini"])
+async def detayli_fiyat_tahmini(arac: DetayliTahminIstegi, request: Request, db: Session = Depends(get_db)):
+    """
+    ## 🔍 Enhanced AI Car Valuation with Detailed Damage Assessment
+    
+    Advanced car evaluation that includes:
+    - Specific part damage analysis
+    - Real-time market data collection
+    - Depreciation calculations based on damage
+    - Comprehensive AI assessment
+    
+    ### 📋 Enhanced Features:
+    - **Part-specific damage assessment**
+    - **Real-time web scraping for market prices**
+    - **Depreciation calculation by damage type**
+    - **Detailed cost breakdown**
+    - **Market comparison analysis**
+    
+    ### 🔧 Damage Assessment:
+    Select specific car parts and damage types to get accurate depreciation calculations.
+    The system will automatically factor in:
+    - Part replacement costs
+    - Damage severity impact
+    - Market perception effects
+    - Repair vs. replacement decisions
+    """
+    start_time = time.time()
+    client_ip = request.client.host
+    
+    try:
+        # Import web scraper
+        from web_scraper import scraper, depreciation_calculator, save_market_data_to_db
+        
+        # 1. Get real-time market data
+        market_data = await scraper.get_depreciation_data_by_damage(
+            arac.marka, arac.model, arac.yil
+        )
+        
+        # Save market data to database
+        save_market_data_to_db(db, market_data)
+        
+        # 2. Calculate depreciation based on damage details
+        base_price = market_data.get('ortalama_fiyat', 500000)
+        
+        # Convert damage details to depreciation calculator format
+        damage_list = []
+        for hasar in arac.hasar_detaylari:
+            # Get part and damage type info from database
+            parca = db.query(AracParcasi).filter(AracParcasi.id == hasar.parca_id).first()
+            hasar_tipi = db.query(HasarTipi).filter(HasarTipi.id == hasar.hasar_tipi_id).first()
+            
+            if parca and hasar_tipi:
+                # Map to depreciation calculator format
+                damage_type_map = {
+                    'Boyalı': 'boyali',
+                    'Değişen': 'degisen', 
+                    'Hasarlı': 'hasarli',
+                    'Çizik': 'boyali',
+                    'Ezik': 'hasarli',
+                    'Çatlak': 'hasarli',
+                    'Paslanma': 'hasarli',
+                    'Yanık': 'hasarli',
+                    'Aşınma': 'boyali',
+                    'Kırık': 'degisen'
+                }
+                
+                damage_list.append({
+                    'part': parca.parca_adi.lower().replace(' ', '_').replace('ö', 'o').replace('ü', 'u').replace('ı', 'i').replace('ş', 's').replace('ğ', 'g').replace('ç', 'c'),
+                    'damage_level': hasar.hasar_seviyesi.lower(),
+                    'damage_type': damage_type_map.get(hasar_tipi.hasar_adi, 'boyali')
+                })
+        
+        # Calculate depreciation
+        depreciation_result = depreciation_calculator.calculate_depreciation(
+            base_price, damage_list
+        )
+        
+        # 3. Enhanced AI prompt with market data and depreciation
+        enhanced_prompt = f"""
+Sen bir otomotiv uzmanısın ve Türkiye'deki ikinci el araç piyasasını çok iyi biliyorsun.
+Aşağıdaki araç için detaylı pazar analizi ve fiyat tahmini yap.
+
+ARAÇ BİLGİLERİ:
+- Marka: {arac.marka}
+- Model: {arac.model}
+- Yıl: {arac.yil}
+- Kilometre: {arac.kilometre:,} km
+- Yakıt Tipi: {arac.yakit_tipi}
+- Vites: {arac.vites_tipi}
+- Renk: {arac.renk}
+- İl: {arac.il}
+- Genel Durum: {arac.genel_durum}
+- Bakım Durumu: {arac.bakım_durumu}
+- Kaza Geçmişi: {'Var' if arac.kaza_gecmisi else 'Yok'}
+
+GÜNCEL PAZAR VERİLERİ:
+- Hasarsız Ortalama: {market_data.get('hasarsiz_ortalama', 'N/A'):,} TL
+- Boyalı Ortalama: {market_data.get('boyali_ortalama', 'N/A'):,} TL  
+- Değişen Ortalama: {market_data.get('degisen_ortalama', 'N/A'):,} TL
+- Hasarlı Ortalama: {market_data.get('hasarli_ortalama', 'N/A'):,} TL
+- İlan Sayısı: {market_data.get('ilan_sayisi', 'N/A')}
+
+HASAR ANALİZİ:
+- Toplam Değer Kaybı: %{depreciation_result['total_depreciation_rate']*100:.1f}
+- Hasar İndirimi: {depreciation_result['depreciation_amount']:,} TL
+- Tahmini Net Fiyat: {depreciation_result['final_estimated_price']:,} TL
+
+HASAR DETAYLARI:
+{chr(10).join([f"- {d.get('part', 'Bilinmeyen')}: {d.get('damage_type', 'N/A')} ({d.get('damage_level', 'N/A')})" for d in damage_list]) if damage_list else "Hasar detayı belirtilmemiş"}
+
+GÖREV:
+1. Bu verilere dayanarak gerçekçi bir fiyat aralığı belirle
+2. Hasar durumunun fiyata etkisini analiz et
+3. Pazar durumunu değerlendir
+4. Alıcı ve satıcı için öneriler sun
+
+Yanıtını aşağıdaki JSON formatında ver:
+{{
+    "tahmini_fiyat_min": [minimum_fiyat],
+    "tahmini_fiyat_max": [maksimum_fiyat],
+    "ortalama_fiyat": [ortalama_fiyat],
+    "rapor": "Detaylı analiz raporu...",
+    "pazar_analizi": "Güncel pazar durumu analizi...",
+    "oneri": "Alıcı ve satıcı önerileri..."
+}}
+"""
+        
+        # 4. Call AI for enhanced analysis
+        result = await fiyat_tahmin_chain.arun(
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            yakit_tipi=arac.yakit_tipi,
+            vites_tipi=arac.vites_tipi,
+            hasar_durumu=f"Detaylı hasar analizi: {len(damage_list)} parça etkilenmiş",
+            renk=arac.renk,
+            il=arac.il,
+            motor_hacmi=f"- Motor Hacmi: {arac.motor_hacmi} L" if arac.motor_hacmi else "",
+            motor_gucu=f"- Motor Gücü: {arac.motor_gucu} HP" if arac.motor_gucu else "",
+            ekstra_bilgiler=enhanced_prompt
+        )
+        
+        end_time = time.time()
+        processing_time = end_time - start_time
+        current_time = datetime.now()
+        
+        # 5. Save detailed estimation to database
+        db_tahmin = AracTahmini(
+            marka=arac.marka,
+            model=arac.model,
+            yil=arac.yil,
+            kilometre=arac.kilometre,
+            yakit_tipi=arac.yakit_tipi,
+            vites_tipi=arac.vites_tipi,
+            hasar_durumu=f"Detaylı: {len(damage_list)} hasar",
+            renk=arac.renk,
+            il=arac.il,
+            motor_hacmi=arac.motor_hacmi,
+            motor_gucu=arac.motor_gucu,
+            ekstra_bilgiler=f"Genel durum: {arac.genel_durum}, Bakım: {arac.bakım_durumu}",
+            tahmini_fiyat_min=result.get("tahmini_fiyat_min", depreciation_result['final_estimated_price']),
+            tahmini_fiyat_max=result.get("tahmini_fiyat_max", int(depreciation_result['final_estimated_price'] * 1.2)),
+            ortalama_fiyat=result.get("ortalama_fiyat", depreciation_result['final_estimated_price']),
+            rapor=result.get("rapor", "Detaylı analiz tamamlandı"),
+            pazar_analizi=result.get("pazar_analizi", "Güncel pazar verileri analiz edildi"),
+            analiz_tarihi=current_time,
+            ip_adresi=client_ip,
+            islem_suresi=processing_time
+        )
+        
+        db.add(db_tahmin)
+        db.commit()
+        db.refresh(db_tahmin)
+        
+        # 6. Save damage details
+        for hasar in arac.hasar_detaylari:
+            hasar_detay = AracHasarDetayi(
+                tahmin_id=db_tahmin.id,
+                parca_id=hasar.parca_id,
+                hasar_tipi_id=hasar.hasar_tipi_id,
+                hasar_seviyesi=hasar.hasar_seviyesi,
+                tahmini_maliyet=hasar.tahmini_maliyet,
+                aciklama=hasar.aciklama
+            )
+            db.add(hasar_detay)
+        
+        db.commit()
+        
+        # 7. Prepare detailed response
+        return DetayliTahminSonucu(
+            tahmini_fiyat_min=result.get("tahmini_fiyat_min", depreciation_result['final_estimated_price']),
+            tahmini_fiyat_max=result.get("tahmini_fiyat_max", int(depreciation_result['final_estimated_price'] * 1.2)),
+            ortalama_fiyat=result.get("ortalama_fiyat", depreciation_result['final_estimated_price']),
+            pazar_fiyati=market_data.get('ortalama_fiyat', 500000),
+            hasar_indirimi=depreciation_result['depreciation_amount'],
+            net_fiyat=depreciation_result['final_estimated_price'],
+            hasar_detay_raporu=depreciation_result['detailed_calculations'],
+            toplam_depreciation_orani=depreciation_result['total_depreciation_rate'],
+            rapor=result.get("rapor", "Detaylı analiz tamamlandı"),
+            pazar_analizi=result.get("pazar_analizi", "Pazar verileri güncellendi"),
+            oneri=result.get("oneri", "Hasar durumu fiyatı etkilemektedir"),
+            analiz_tarihi=current_time.strftime("%Y-%m-%d %H:%M:%S"),
+            güven_skoru=90 if len(damage_list) > 0 else 85,
+            veri_kaynagi=market_data.get('kaynak', 'aggregated'),
+            tahmin_id=db_tahmin.id
+        )
+        
+    except Exception as e:
+        print(f"Error in detailed estimation: {e}")
+        raise HTTPException(status_code=500, detail=f"Detaylı fiyat tahmini yapılırken hata: {str(e)}")
+
+@app.get("/arac-parcalari", response_model=List[AracParcasiYanit], tags=["🔧 Araç Parçaları"])
+async def get_arac_parcalari(kategori: Optional[str] = None, db: Session = Depends(get_db)):
+    """
+    ## 🔧 Get Car Parts List
+    
+    Returns all available car parts for damage assessment.
+    
+    **Parameters:**
+    - `kategori` (optional): Filter by category (Gövde, Motor, İç Mekan, etc.)
+    
+    **Returns:** List of car parts with impact factors and average costs
+    """
+    query = db.query(AracParcasi).filter(AracParcasi.aktif == True)
+    
+    if kategori:
+        query = query.filter(AracParcasi.kategori == kategori)
+    
+    parcalar = query.all()
+    return parcalar
+
+@app.get("/hasar-tipleri", response_model=List[HasarTipiYanit], tags=["🔧 Hasar Tipleri"])
+async def get_hasar_tipleri(db: Session = Depends(get_db)):
+    """
+    ## 🔧 Get Damage Types List
+    
+    Returns all available damage types for car parts.
+    
+    **Returns:** List of damage types with depreciation rates
+    """
+    hasar_tipleri = db.query(HasarTipi).filter(HasarTipi.aktif == True).all()
+    return hasar_tipleri
+
+@app.get("/pazar-verileri/{marka}/{model}/{yil}", response_model=PazarVerisiYanit, tags=["📊 Pazar Verileri"])
+async def get_pazar_verileri(marka: str, model: str, yil: int, db: Session = Depends(get_db)):
+    """
+    ## 📊 Get Latest Market Data
+    
+    Returns the most recent market data for a specific car.
+    
+    **Parameters:**
+    - `marka`: Car brand
+    - `model`: Car model  
+    - `yil`: Model year
+    
+    **Returns:** Latest market data including damage-specific pricing
+    """
+    from web_scraper import get_latest_market_data
+    
+    # Try to get from database first
+    pazar_verisi = get_latest_market_data(db, marka, model, yil)
+    
+    if not pazar_verisi:
+        # If not found, collect new data
+        from web_scraper import scraper, save_market_data_to_db
+        market_data = await scraper.get_depreciation_data_by_damage(marka, model, yil)
+        pazar_verisi = save_market_data_to_db(db, market_data)
+    
+    return pazar_verisi
 
 # ===== KULLANICI YÖNETİMİ ENDPOINT'LERİ =====
 

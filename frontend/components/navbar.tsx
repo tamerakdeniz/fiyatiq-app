@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Car, User, LogOut, Menu, X, BarChart3, Settings } from "lucide-react"
+import { Car, User, LogOut, Menu, X, BarChart3, Settings, Search } from "lucide-react"
 import { useAuth } from "@/contexts/auth-context"
 import { cn } from "@/lib/utils"
 
@@ -29,7 +29,8 @@ export function Navbar() {
 
   const navItems = [
     { href: "/dashboard", label: "Panel", icon: BarChart3 },
-    { href: "/estimate", label: "Tahmin", icon: Car },
+    { href: "/estimate", label: "Hızlı Tahmin", icon: Car },
+    { href: "/detailed-estimate", label: "Detaylı Analiz", icon: Search },
   ]
 
   const isActive = (href: string) => pathname === href
