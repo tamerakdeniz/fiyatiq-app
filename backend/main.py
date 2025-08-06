@@ -54,7 +54,7 @@ if not GEMINI_API_KEY:
 
 # LangChain ile Gemini modelini oluştur
 llm = ChatGoogleGenerativeAI(
-    model=os.getenv("GEMINI_MODEL", "gemini-1.5-flash"),
+    model=os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
     google_api_key=GEMINI_API_KEY,
     temperature=float(os.getenv("GEMINI_TEMPERATURE", "0.2")),
     max_tokens=int(os.getenv("GEMINI_MAX_TOKENS", "2048")),

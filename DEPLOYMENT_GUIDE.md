@@ -6,6 +6,7 @@
 ## 📋 Prerequisites
 
 ### Server Requirements
+
 - Ubuntu 20.04+ or CentOS 8+
 - Docker & Docker Compose installed
 - At least 2GB RAM
@@ -13,6 +14,7 @@
 - Ports 80, 443, 3000, 8000 available
 
 ### Domain Configuration
+
 - DNS A record pointing `fiyatiq.wxcodesign.com` to `64.226.67.215`
 - SSL certificates (optional for initial setup)
 
@@ -55,9 +57,10 @@ nano backend/.env
 ```
 
 **Required backend/.env content:**
+
 ```env
 GEMINI_API_KEY=your_actual_gemini_api_key_here
-GEMINI_MODEL=gemini-1.5-flash
+GEMINI_MODEL=gemini-2.0-flash
 GEMINI_TEMPERATURE=0.2
 GEMINI_MAX_TOKENS=2048
 APP_NAME=FiyatIQ API
@@ -82,6 +85,7 @@ cd ../..
 ```
 
 **For production, use real SSL certificates:**
+
 - Obtain certificates from Let's Encrypt or your CA
 - Place them in `nginx/ssl/` directory
 - Update `nginx/sites-available/fiyatiq.conf` with correct paths
@@ -99,6 +103,7 @@ chmod +x deploy.sh
 ## 🌐 Domain Configuration
 
 ### DNS Setup
+
 Add these DNS records to your domain provider:
 
 ```
@@ -109,9 +114,11 @@ TTL: 300
 ```
 
 ### SSL Certificate (Production)
+
 For production SSL certificates:
 
 1. **Using Let's Encrypt (Recommended):**
+
 ```bash
 # Install Certbot
 sudo apt install certbot
@@ -125,11 +132,12 @@ sudo cp /etc/letsencrypt/live/fiyatiq.wxcodesign.com/privkey.pem nginx/ssl/fiyat
 ```
 
 2. **Update nginx configuration:**
-Edit `nginx/sites-available/fiyatiq.conf` and uncomment the real SSL certificate lines.
+   Edit `nginx/sites-available/fiyatiq.conf` and uncomment the real SSL certificate lines.
 
 ## 🔍 Verification
 
 ### Check Service Status
+
 ```bash
 # View all containers
 docker-compose ps
@@ -144,6 +152,7 @@ curl http://localhost:80
 ```
 
 ### Test Application
+
 1. **Frontend**: https://fiyatiq.wxcodesign.com
 2. **API Documentation**: https://fiyatiq.wxcodesign.com/docs
 3. **Health Check**: https://fiyatiq.wxcodesign.com/health
@@ -151,6 +160,7 @@ curl http://localhost:80
 ## 🛠 Maintenance
 
 ### Update Application
+
 ```bash
 # Pull latest changes
 git pull origin main
@@ -161,6 +171,7 @@ docker-compose up -d --build
 ```
 
 ### View Logs
+
 ```bash
 # All services
 docker-compose logs -f
@@ -172,6 +183,7 @@ docker-compose logs -f nginx
 ```
 
 ### Backup
+
 ```bash
 # Backup environment files
 cp backend/.env backend/.env.backup
@@ -182,6 +194,7 @@ tar -czf nginx-backup.tar.gz nginx/
 ```
 
 ### Restart Services
+
 ```bash
 # Restart all services
 docker-compose restart
@@ -195,6 +208,7 @@ docker-compose restart nginx
 ## 🔒 Security Considerations
 
 ### Firewall Configuration
+
 ```bash
 # Allow only necessary ports
 sudo ufw allow 22/tcp    # SSH
@@ -204,6 +218,7 @@ sudo ufw enable
 ```
 
 ### SSL Certificate Renewal
+
 If using Let's Encrypt, set up automatic renewal:
 
 ```bash
@@ -215,6 +230,7 @@ sudo crontab -e
 ```
 
 ### Environment Security
+
 - Never commit `.env` files to version control
 - Use strong, unique API keys
 - Regularly rotate credentials
@@ -225,6 +241,7 @@ sudo crontab -e
 ### Common Issues
 
 1. **Port Already in Use**
+
 ```bash
 # Check what's using the port
 sudo netstat -tulpn | grep :80
@@ -236,6 +253,7 @@ sudo systemctl stop nginx    # if using system nginx
 ```
 
 2. **Docker Permission Issues**
+
 ```bash
 # Add user to docker group
 sudo usermod -aG docker $USER
@@ -243,6 +261,7 @@ sudo usermod -aG docker $USER
 ```
 
 3. **SSL Certificate Issues**
+
 ```bash
 # Check certificate validity
 openssl x509 -in nginx/ssl/fiyatiq.crt -text -noout
@@ -252,6 +271,7 @@ docker-compose exec nginx nginx -t
 ```
 
 4. **API Connection Issues**
+
 ```bash
 # Check backend logs
 docker-compose logs backend
@@ -281,6 +301,7 @@ free -h
 ## 📞 Support
 
 For deployment issues:
+
 1. Check the logs: `docker-compose logs -f`
 2. Verify environment variables
 3. Test individual services
@@ -289,4 +310,4 @@ For deployment issues:
 
 ---
 
-**Note**: This deployment guide assumes a clean Ubuntu server. Adjust commands for your specific server environment. 
+**Note**: This deployment guide assumes a clean Ubuntu server. Adjust commands for your specific server environment.
