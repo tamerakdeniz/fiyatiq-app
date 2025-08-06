@@ -33,13 +33,15 @@ FiyatIQ, kullanıcıların araç bilgilerini girerek **Gemini AI** ile güncel p
 
 ## 🚀 Kurulum ve Çalıştırma
 
-### 1. Projeyi Klonlayın
+### 🏠 Geliştirme Ortamı (Local)
+
+#### 1. Projeyi Klonlayın
 ```bash
 git clone https://github.com/tamerakdeniz/fiyatiq-app
 cd fiyatiq
 ```
 
-### 2. Backend Kurulumu
+#### 2. Backend Kurulumu
 
 ```bash
 cd backend
@@ -57,10 +59,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Environment dosyasını oluşturun
-cp .env.example .env
+cp env.example .env
 ```
 
-### 3. Gemini API Anahtarı Ayarlayın
+#### 3. Gemini API Anahtarı Ayarlayın
 
 1. [Google AI Studio](https://makersuite.google.com/app/apikey) adresinden API anahtarı alın
 2. `.env` dosyasını düzenleyin:
@@ -68,12 +70,12 @@ cp .env.example .env
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
-### 4. Backend'i Başlatın
+#### 4. Backend'i Başlatın
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 5. Frontend Kurulumu
+#### 5. Frontend Kurulumu
 
 Yeni terminal açın:
 ```bash
@@ -85,7 +87,7 @@ npm install
 pnpm install
 
 # Environment dosyasını oluşturun (opsiyonel)
-echo "NEXT_PUBLIC_API_BASE_URL=http://localhost:8000" > .env.local
+cp env.example .env.local
 
 # Frontend'i başlatın
 npm run dev
@@ -93,11 +95,32 @@ npm run dev
 pnpm dev
 ```
 
-### 6. Uygulamayı Açın
+#### 6. Uygulamayı Açın
 
 - **Frontend**: http://localhost:3000
 - **Backend API Docs**: http://localhost:8000/docs
 - **Backend Health**: http://localhost:8000/health
+
+### 🌐 Production Ortamı (Server)
+
+#### Canlı Uygulama
+- **Frontend**: https://fiyatiq.wxcodesign.com
+- **API Documentation**: https://fiyatiq.wxcodesign.com/docs
+- **Health Check**: https://fiyatiq.wxcodesign.com/health
+
+#### Production Deployment
+Detaylı deployment rehberi için [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md) dosyasını inceleyin.
+
+**Hızlı Kurulum:**
+```bash
+# Server'da çalıştırın
+git clone https://github.com/tamerakdeniz/fiyatiq-app.git
+cd fiyatiq
+cp backend/env.example backend/.env
+# backend/.env dosyasını düzenleyin ve Gemini API key'inizi ekleyin
+chmod +x deploy.sh
+./deploy.sh
+```
 
 ## 📖 Kullanım Rehberi
 
