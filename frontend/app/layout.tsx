@@ -10,7 +10,12 @@ export const metadata: Metadata = {
   title: 'FiyatIQ - Akıllı Araç Fiyat Tahmin Platformu',
   description:
     'Gerçek zamanlı pazar verileri kullanarak AI destekli araç fiyat tahmini',
-  generator: 'v0.dev'
+  generator: 'v0.dev',
+  icons: {
+    icon: '/fiyatiq.ico',
+    shortcut: '/fiyatiq.ico',
+    apple: '/fiyatiq.ico'
+  }
 };
 
 export default function RootLayout({
